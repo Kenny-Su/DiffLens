@@ -4,4 +4,3 @@ data/
 .env
 *.log
 dist-server/
-fixtures/

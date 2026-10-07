@@ -49,18 +49,4 @@ This is a local, single-user prototype. It does not implement authentication, pa
 
 The project is unreleased. Local data is disposable; schema changes do not preserve older data formats or include migrations. Start with fresh local data when its shape changes.
 
-## Local evaluation
-
-Annotated revision exports are local data. Keep them in `fixtures/`; the entire directory is ignored by Git and is not bundled into the application. Evaluation reports in `data/` are also ignored. The app builds and runs without these files.
-
-To evaluate an export such as `fixtures/my-passage.json`, run:
-
-```sh
-npm run evaluate:example -- my-passage
-```
-
-The evaluator uses the annotated edit boundaries and the original instruction, with no additional standing rules. Human labels and reasons are withheld from the API request. It writes model predictions, an edit-level confusion matrix, precision/recall/F1, prevalence, and clause comparisons to `data/my-passage-evaluation.json`. Undefined metrics are null. Clause outcomes are scored only for exact clause-text matches; unmatched clauses remain unscored. One passage is a smoke evaluation, not a general performance estimate.
-
-Run `npm run evaluate:all` to evaluate all local exports. Each invocation requests fresh model judgments and overwrites the corresponding local reports. Confirmed-only and draft-only scores are reported separately in `data/evaluation-summary.json`; comparisons against draft annotations are exploratory.
-
 API calls use explicit developer instructions and a separate user data message. Audits and rule proposals use strict JSON Schema through Responses `text.format`; passage generation returns plain text. Refused, incomplete, or empty responses are rejected before parsing. Semantic edit-ID validation still runs after schema-constrained output.

@@ -6,8 +6,6 @@
     "build": "tsc -p tsconfig.app.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.server.json && vite build",
     "start": "node dist-server/server/index.js",
     "test": "tsx --test server/*.test.ts",
-    "evaluate:example": "tsx server/evaluate.ts",
-    "evaluate:all": "tsx server/evaluate.ts --all",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.server.json --noEmit"
   },
   "repository": {
