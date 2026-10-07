@@ -1,6 +1,6 @@
 # DiffLens
 
-A plain-text workspace for passage-level scientific revision and fidelity auditing. Built with React, TypeScript, Vite, Fastify, and SQLite (Node's built-in SQLite module).
+A plain-text editor for passage-level scientific revision and fidelity auditing. Built with React, TypeScript, Vite, Fastify, and SQLite (Node's built-in SQLite module).
 
 ## Run
 
@@ -26,7 +26,7 @@ For deployment, build with development dependencies installed, then install runt
 
 ## Workflow
 
-1. Paste a passage and editing instruction; edit or toggle standing rules.
+1. Paste a passage and editing instruction; optionally add your own standing rules. New browsers start with no rules.
 2. Generate and audit a revision, or supply your own proposed revision to audit.
 3. Select changes in the unified diff. Accept or reject them and save feedback.
 4. Inspect instruction fulfillment and prohibition violations with linked edit IDs.

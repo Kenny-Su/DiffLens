@@ -5,13 +5,12 @@ import { mkdirSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { audit } from './core.js';
 import { type Rule, type Run } from '../shared/types.js';
-import { revise, auditWithModel, inferRule, model } from './model.js';
+import { revise, auditWithModel, inferRule } from './model.js';
 mkdirSync('data', { recursive: true });
 const db = new DatabaseSync('data/difflens.sqlite');
 db.exec('CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, body TEXT NOT NULL)');
 const app = Fastify({ logger: true, bodyLimit: 1024 * 1024 });
 app.setErrorHandler((error, _req, reply) => { const validation = error instanceof Error && 'validation' in error; reply.code(validation ? 400 : 502).send({ message: validation ? 'Invalid request. Check your input.' : error instanceof Error ? error.message : 'Request failed.' }); });
-app.get('/api/config', async () => ({ configured: Boolean(process.env.OPENAI_API_KEY && model), model }));
 const ruleSchema = { type: 'object', additionalProperties: false, required: ['id', 'text', 'enabled'], properties: { id: { type: 'string' }, text: { type: 'string', maxLength: 1000 }, enabled: { type: 'boolean' } } };
 app.post<{ Body: { original: string; revised?: string; instruction: string; rules: Rule[] } }>('/api/runs', {
   schema: { body: { type: 'object', additionalProperties: false, required: ['original', 'instruction', 'rules'], properties: { original: { type: 'string', minLength: 1, maxLength: 30000 }, revised: { type: 'string', maxLength: 30000 }, instruction: { type: 'string', minLength: 1, maxLength: 5000 }, rules: { type: 'array', maxItems: 50, items: ruleSchema } } } },

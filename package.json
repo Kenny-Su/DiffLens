@@ -1,6 +1,6 @@
 {
   "name": "difflens",
-  "description": "Scientific revision fidelity workspace",
+  "description": "Scientific revision fidelity editor",
   "scripts": {
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
     "build": "tsc -p tsconfig.app.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.server.json && vite build",

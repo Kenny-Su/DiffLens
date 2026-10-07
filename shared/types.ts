@@ -4,8 +4,3 @@ export interface Edit { id: string; before: string; after: string; start: number
 export interface Segment { text?: string; editId?: string }
 export interface Clause { id: string; text: string; kind: 'request' | 'prohibition'; status: 'fulfilled' | 'review' | 'violated'; editIds: string[] }
 export interface Run { id: string; original: string; revised: string; instruction: string; rules: Rule[]; edits: Edit[]; segments: Segment[]; clauses: Clause[]; createdAt: string; mode: 'generated' | 'manual'; model?: string }
-export const defaultRules: Rule[] = [
-  { id: 'hedges', text: 'Preserve uncertainty and the strength of scientific claims.', enabled: true },
-  { id: 'numbers', text: 'Keep numerical values, statistics, and sample sizes unchanged.', enabled: true },
-  { id: 'conditions', text: 'Retain limitations, conditions, and contradictory evidence.', enabled: true },
-];
