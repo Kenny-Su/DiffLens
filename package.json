@@ -1,12 +1,14 @@
 {
   "name": "difflens",
-  "version": "1.0.0",
   "description": "Scientific revision fidelity workspace",
   "scripts": {
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
-    "build": "tsc --noEmit && vite build",
-    "start": "tsx server/index.ts",
-    "test": "tsx --test server/core.test.ts"
+    "build": "tsc -p tsconfig.app.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.server.json && vite build",
+    "start": "node dist-server/server/index.js",
+    "test": "tsx --test server/*.test.ts",
+    "evaluate:example": "tsx server/evaluate.ts",
+    "evaluate:all": "tsx server/evaluate.ts --all",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.server.json --noEmit"
   },
   "repository": {
     "type": "git",
@@ -31,7 +33,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@types/node": "^26.6.4",
+    "@types/node": "^24.19.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
@@ -41,6 +43,6 @@
     "vite": "^8.3.2"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24.21.0 <25"
   }
 }
