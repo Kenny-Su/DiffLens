@@ -1,9 +1,10 @@
 {
   "name": "difflens",
-  "description": "Scientific revision fidelity editor",
+  "description": "Text editor with AI revisions and change review",
   "scripts": {
     "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 127.0.0.1\"",
-    "build": "tsc -p tsconfig.app.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.server.json && vite build",
+    "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; for (const path of ['dist', 'dist-server']) rmSync(path, { recursive: true, force: true });\"",
+    "build": "npm run clean && tsc -p tsconfig.app.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.server.json && vite build",
     "start": "node dist-server/server/index.js",
     "test": "tsx --test server/*.test.ts",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.server.json --noEmit"

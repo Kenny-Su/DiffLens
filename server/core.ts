@@ -7,7 +7,7 @@ function sentences(text: string): { start: number; end: number; text: string }[]
   for (const s of splitter.segment(text)) spans.push({ start: s.index, end: s.index + s.segment.length, text: s.segment });
   return spans;
 }
-export function audit(original: string, revised: string, instruction: string, rules: Rule[], mode: Run['mode']): Run {
+export function createRevision(original: string, revised: string, instruction: string, rules: Rule[]): Run {
   const a = sentences(original), b = sentences(revised), n = a.length, m = b.length;
   if (n > 200 || m > 200) throw new Error('Use a passage of at most 200 sentences for this prototype.');
   const costs = Array.from({ length: n + 1 }, () => Array<number>(m + 1).fill(Infinity));
@@ -35,11 +35,8 @@ export function audit(original: string, revised: string, instruction: string, ru
     if (before === after) { segments.push({text:before}); continue; }
     const start = a[p]?.start ?? original.length;
     const end = i > p ? a[i-1].end : start;
-    const edit: Edit = { id: `e${edits.length+1}`, before, after, start, end, flag: false, reason: '', decision: 'pending', feedback: '' };
+    const edit: Edit = { id: `e${edits.length+1}`, before, after, start, end, decision: 'pending', feedback: '' };
     edits.push(edit);segments.push({editId:edit.id});
   }
-  return { id: randomUUID(), original, revised, instruction, rules, edits, segments, clauses: [], createdAt: new Date().toISOString(), mode };
-}
-export function compose(run: Run): string {
-  return run.segments.map(s => s.text ?? (() => { const e = run.edits.find(e => e.id === s.editId)!; return e.decision === 'accepted' ? e.after : e.before; })()).join('');
+  return { id: randomUUID(), original, revised, instruction, rules, edits, segments, createdAt: new Date().toISOString() };
 }

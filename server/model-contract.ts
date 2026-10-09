@@ -1,26 +1,5 @@
 import type { ResponseCreateParamsNonStreaming, Response } from 'openai/resources/responses/responses.js';
 export type OutputFormat = { name: string; schema: Record<string, unknown> };
-export const auditFormat: OutputFormat = {
-  name: 'revision_audit',
-  schema: {
-    type: 'object', additionalProperties: false, required: ['edits', 'clauses'],
-    properties: {
-      edits: { type: 'array', items: {
-        type: 'object', additionalProperties: false, required: ['id', 'flag', 'reason'],
-        properties: { id: { type: 'string' }, flag: { type: 'boolean', description: 'True when the edit is unacceptable under the instruction and applicable rules.' }, reason: { type: 'string' } },
-      } },
-      clauses: { type: 'array', items: {
-        type: 'object', additionalProperties: false, required: ['id', 'text', 'kind', 'status', 'editIds'],
-        properties: {
-          id: { type: 'string' }, text: { type: 'string' },
-          kind: { type: 'string', enum: ['request', 'prohibition'] },
-          status: { type: 'string', enum: ['fulfilled', 'review', 'violated'] },
-          editIds: { type: 'array', items: { type: 'string' } },
-        },
-      } },
-    },
-  },
-};
 export const ruleFormat: OutputFormat = {
   name: 'rule_proposal',
   schema: { type: 'object', additionalProperties: false, required: ['rule'], properties: { rule: { type: ['string', 'null'] } } },
