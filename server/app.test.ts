@@ -9,6 +9,13 @@ function setup() {
   const calls: { original: string; selection?: TextSelection }[] = [];
   const app = createApp(new DatabaseSync(':memory:'), {
     model: 'test-model',
+    async audit(run, final) {
+      return { assessments: [
+        ...(final?.edits || run.edits).map(edit => ({ kind: 'edit', subjectId: edit.id, text: 'Change', outcome: 'acceptable', reason: 'Requested change.', editIds: [edit.id], proposalEditIds: [], ruleIds: [] })),
+        ...run.rules.filter(rule => rule.enabled).map(rule => ({ kind: 'rule', subjectId: rule.id, text: rule.text, outcome: 'respected', reason: 'Preserved.', editIds: [], proposalEditIds: [], ruleIds: [rule.id] })),
+        { kind: 'request', subjectId: null, text: run.instruction, outcome: 'fulfilled', reason: 'Requested change made.', editIds: [], proposalEditIds: [], ruleIds: [] },
+      ] };
+    },
     async revise(original, instruction, _rules, selection) {
       calls.push({ original, selection });
       if (instruction === 'Fail') throw new Error('Model unavailable');
@@ -25,6 +32,7 @@ test('one-call generation, bulk decisions, feedback, undo, and result persistenc
   const response = await app.inject({ method: 'POST', url: '/api/runs', payload });
   assert.equal(response.statusCode, 200);
   const run: Run = response.json();
+  await app.waitForAudits();
   assert.equal(calls.length, 1);
   assert.equal(run.edits.length, 2);
   const patch = (decision: 'accepted' | 'rejected' | 'pending') => app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { edits: run.edits.map(edit => ({ id: edit.id, decision, feedback: 'Keep it concise.' })) } });

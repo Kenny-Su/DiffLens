@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DRAFT_KEY, emptyDraft, readDraft, resultDraft, writeDraft } from '../src/lib/draft.js';
 import { createRevision } from './core.js';
+import { readRules, RULES_KEY } from '../src/lib/rules.js';
+import { defaultRules } from '../shared/fidelity.js';
 
 function storage() {
   const entries = new Map<string, string>();
@@ -35,4 +37,27 @@ test('storage failure leaves the in-memory draft intact', () => {
   const store = { getItem: () => null, setItem: () => { throw new Error('Quota exceeded'); } };
   assert.throws(() => writeDraft(store, draft), /Quota/);
   assert.equal(draft.text, 'Keep this writing.');
+});
+test('legacy drafts retain writing and review while new audit references and notes survive reload', () => {
+  const store = storage();
+  const legacy = { version: 1, text: 'Unchanged writing.', instruction: 'Tighten.', activeRunId: 'r1', feedback: { e1: 'Keep this.' } };
+  store.setItem(DRAFT_KEY, JSON.stringify(legacy));
+  assert.deepEqual(readDraft(store), { ...emptyDraft(), ...legacy });
+  const draft = { ...readDraft(store), lastRevisionId: 'r1', lastFinalReviewId: 'f1', auditFeedback: { 'audit1/a2': 'Unfinished disagreement explanation.' } };
+  writeDraft(store, draft);
+  assert.deepEqual(readDraft(store), draft);
+});
+test('scientific defaults seed only a new rule collection; empty and customized collections survive', () => {
+  const store = storage();
+  const rules = readRules(store);
+  assert.deepEqual(rules, defaultRules);
+  rules[0].text = 'My customization.';
+  assert.notEqual(rules[0].text, defaultRules[0].text);
+  for (const saved of [[], rules]) {
+    store.setItem(RULES_KEY, JSON.stringify(saved));
+    assert.deepEqual(readRules(store), saved);
+  }
+  store.setItem(RULES_KEY, 'broken');
+  assert.throws(() => readRules(store));
+  assert.equal(store.getItem(RULES_KEY), 'broken');
 });

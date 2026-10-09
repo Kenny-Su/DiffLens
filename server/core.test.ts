@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRevision } from './core.js';
+import { createRevision, createDocumentDiff } from './core.js';
 import { compose } from '../shared/compose.js';
 import { revisionTarget, selectionError } from '../shared/selection.js';
 
@@ -62,4 +62,20 @@ test('the old sentence limit is gone while the character limit remains', () => {
   const original = 'One sentence. '.repeat(201);
   assert.equal(createRevision(original, original, 'Keep.', []).edits.length, 0);
   assert.throws(() => createRevision('a'.repeat(30001), 'a', 'Shorten.', []), /30,000/);
+});
+test('final diffs preserve mixed-decision whitespace and selection boundaries', () => {
+  const original = 'Same words.\n\n Same words.\n\nSame words.';
+  const start = original.indexOf('Same', 1), selection = { start, end: start + 'Same words.'.length };
+  const run = createRevision(original, 'Different terms.', 'Reword.', [], selection);
+  for (let mask = 0; mask < 2 ** run.edits.length; mask++) {
+    run.edits.forEach((edit, index) => { edit.decision = mask & (1 << index) ? 'accepted' : 'rejected'; });
+    const text = compose(run), final = createDocumentDiff(original, text, selection);
+    final.edits.forEach(edit => { assert.ok(edit.start >= selection.start && edit.end <= selection.end); edit.decision = 'accepted'; });
+    assert.equal(compose({ ...run, ...final }), text);
+  }
+  const text = original.slice(0, start) + '  Mixed terms. ' + original.slice(selection.end);
+  const final = createDocumentDiff(original, text, selection);
+  final.edits.forEach(edit => { edit.decision = 'accepted'; });
+  assert.equal(compose({ ...run, ...final }), text);
+  assert.throws(() => createDocumentDiff(original, 'Wrong prefix.' + text, selection), /outside/);
 });
