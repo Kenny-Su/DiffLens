@@ -1,42 +1,41 @@
 import { diffWordsWithSpace } from 'diff';
 import { randomUUID } from 'node:crypto';
-import type { Run, Rule, Edit, Segment } from '../shared/types.js';
-function sentences(text: string): { start: number; end: number; text: string }[] {
-  const spans: { start: number; end: number; text: string }[] = [];
-  const splitter = new Intl.Segmenter('en', { granularity: 'sentence' });
-  for (const s of splitter.segment(text)) spans.push({ start: s.index, end: s.index + s.segment.length, text: s.segment });
-  return spans;
-}
-export function createRevision(original: string, revised: string, instruction: string, rules: Rule[]): Run {
-  const a = sentences(original), b = sentences(revised), n = a.length, m = b.length;
-  if (n > 200 || m > 200) throw new Error('Use a passage of at most 200 sentences for this prototype.');
-  const costs = Array.from({ length: n + 1 }, () => Array<number>(m + 1).fill(Infinity));
-  const previous = new Map<string, [number, number]>();
-  costs[0][0] = 0;
-  const text = (spans: typeof a, index: number, count: number) => spans.slice(index,index + count).map(s => s.text).join('');
-  const steps = [[1,1],[1,2],[2,1],[1,0],[0,1]];
-  for (let i = 0; i <= n; i++) for (let j = 0; j <= m; j++) {
-    if (!Number.isFinite(costs[i][j])) continue;
-    for (const [x,y] of steps) {
-      if (i+x > n || j+y > m) continue;
-      const left = text(a,i,x), right = text(b,j,y);
-      const common = diffWordsWithSpace(left.trim(),right.trim()).filter(p => !p.added && !p.removed).reduce((sum,p) => sum+p.value.length,0);
-      const ratio = 2*common / Math.max(1,left.trim().length+right.trim().length);
-      const cost = x && y ? (1-ratio)*(x+y)/2 + .2*(x+y-2) : .8;
-      if (costs[i][j]+cost < costs[i+x][j+y]) { costs[i+x][j+y] = costs[i][j]+cost; previous.set(`${i+x},${j+y}`,[i,j]); }
-    }
-  }
-  const aligned: [number,number,number,number][] = [];
-  let i = n, j = m;
-  while (i || j) { const [p,q] = previous.get(`${i},${j}`)!; aligned.push([p,i,q,j]); i=p;j=q; }
+import { revisionTarget } from '../shared/selection.js';
+import type { Run, Rule, Edit, Segment, TextSelection } from '../shared/types.js';
+
+export function createRevision(original: string, replacement: string, instruction: string, rules: Rule[], selection?: TextSelection): Run {
+  const target = selection ? revisionTarget(original, selection) : { start: 0, end: original.length };
+  const before = original.slice(target.start, target.end);
+  const after = selection ? replacement.trim() : replacement;
+  const revised = original.slice(0, target.start) + after + original.slice(target.end);
+  if (original.length > 30000 || revised.length > 30000) throw new Error('Use a document of at most 30,000 characters.');
   const edits: Edit[] = [], segments: Segment[] = [];
-  for (const [p,i,q,j] of aligned.reverse()) {
-    const before = text(a,p,i-p), after = text(b,q,j-q);
-    if (before === after) { segments.push({text:before}); continue; }
-    const start = a[p]?.start ?? original.length;
-    const end = i > p ? a[i-1].end : start;
-    const edit: Edit = { id: `e${edits.length+1}`, before, after, start, end, decision: 'pending', feedback: '' };
-    edits.push(edit);segments.push({editId:edit.id});
+  if (target.start) segments.push({ text: original.slice(0, target.start) });
+  let offset = target.start;
+  let pending: Edit | null = null;
+  const flush = () => {
+    if (!pending) return;
+    edits.push(pending);
+    segments.push({ editId: pending.id });
+    pending = null;
+  };
+  const changes = diffWordsWithSpace(before, after, { timeout: 1000 });
+  if (!changes) throw new Error('This revision has too many differences. Try revising a smaller selection.');
+  for (const change of changes) {
+    if (!change.added && !change.removed) {
+      flush();
+      segments.push({ text: change.value });
+      offset += change.value.length;
+      continue;
+    }
+    pending ??= { id: `e${edits.length + 1}`, before: '', after: '', start: offset, end: offset, decision: 'pending', feedback: '' };
+    if (change.removed) {
+      pending.before += change.value;
+      offset += change.value.length;
+      pending.end = offset;
+    } else pending.after += change.value;
   }
-  return { id: randomUUID(), original, revised, instruction, rules, edits, segments, createdAt: new Date().toISOString() };
+  flush();
+  if (target.end < original.length) segments.push({ text: original.slice(target.end) });
+  return { id: randomUUID(), original, revised, instruction, rules, edits, segments, createdAt: new Date().toISOString(), ...(selection ? { selection } : {}) };
 }

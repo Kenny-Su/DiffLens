@@ -15,5 +15,5 @@ export function completedText(response: Pick<Response, 'status' | 'output' | 'ou
   if (response.output.some(item => item.type === 'message' && item.content.some(content => content.type === 'refusal'))) throw new Error('The model declined this request.');
   if (response.status !== 'completed') throw new Error(`The model response was ${response.status}; no result was saved. Please retry.`);
   if (!response.output_text.trim()) throw new Error('The model returned an empty response.');
-  return response.output_text.trim();
+  return response.output_text;
 }

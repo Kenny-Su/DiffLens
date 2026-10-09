@@ -14,7 +14,7 @@ test('partial text is never accepted as a completed revision', () => {
   assert.throws(() => completedText({status:'incomplete',output:[],output_text:'A partial revision'}), /incomplete/);
   assert.throws(() => completedText({status:'failed',output:[],output_text:'partial'}), /failed/);
   assert.throws(() => completedText({status:'completed',output:[],output_text:' '}), /empty/);
-  assert.equal(completedText({status:'completed',output:[],output_text:' {"rule":null} '}),'{"rule":null}');
+  assert.equal(completedText({status:'completed',output:[],output_text:' {"rule":null} '}),' {"rule":null} ');
 });
 test('refusals are surfaced instead of parsed as schema results', () => {
   const message = {type:'message' as const,id:'test',role:'assistant' as const,status:'completed' as const,content:[{type:'refusal' as const,refusal:'Declined'}]};

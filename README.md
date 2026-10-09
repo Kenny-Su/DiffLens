@@ -26,14 +26,24 @@ For deployment, build with development dependencies installed, then install runt
 
 ## Workflow
 
-1. Paste a passage and editing instruction; optionally add your own standing rules. New browsers start with no rules.
-2. Generate a revision from your editing instruction and enabled standing rules.
-3. Select changes in the unified diff. Accept or reject them and save feedback.
-4. View the composed result. Only accepted edits are applied; pending and rejected edits preserve original text.
-5. After explaining at least two rejected edits, request a model-inferred standing rule. Edit, accept, or dismiss the proposal.
-6. Export the revision, rule snapshot, decisions, feedback, and composed result as JSON.
+1. Write or paste text into the document workspace. The working draft and revision instruction autosave in this browser.
+2. Optionally select a passage, then open **Revise**. Enter an instruction and press **Send**. A selected passage is revised automatically; without a selection, the revision applies to the whole document. Standing rules are available through the settings icon in the sidebar heading.
+3. Generate suggestions. The document is temporarily read-only during generation and review. Each contiguous word-level change can be accepted or rejected independently.
+4. Select a highlighted change for accept/reject controls and optional feedback. Use **Show resolved** to inspect completed decisions and undo them, or accept/reject all remaining suggestions.
+5. Choose **Return to writing**. Accepted changes become draft text; pending and rejected changes retain the original wording. Unsaved feedback is saved before leaving review.
+6. Open **History** to preview a saved revision without replacing the draft. **Use result** explicitly replaces the working draft. Both replacement and starting a new draft protect existing writing with a confirmation.
+7. Copy or download the current text. JSON exports in review/history include the revision, selection scope, rule snapshot, decisions, feedback, and composed result.
+8. After explaining at least two rejected changes, request a standing-rule suggestion from feedback. Edit, add, or dismiss the proposal.
 
-Revisions and decisions persist in `data/difflens.sqlite`. Current standing rules persist in browser local storage; each run freezes its own rule snapshot. Recent revision history is limited to 20 entries in the interface. All offsets are JavaScript UTF-16 code units.
+There is one working draft per browser, stored under `difflens-draft-v1` in local storage, including the instruction, active review ID, and feedback drafts. Reloading restores the active review from the server. If storage or review restoration fails, the interface preserves the open draft and offers recovery actions. Standing rules are stored separately in browser local storage.
+
+Revisions and decisions persist in `data/difflens.sqlite`. The history panel shows the latest 20 revisions; an active review can be retrieved by ID even if it is older. This version supports plain text, with no named-document library.
+
+## Revision API
+
+`POST /api/runs` accepts `original`, `instruction`, `rules`, and an optional `selection: { start, end }`. Selection offsets use JavaScript UTF-16 code units and must describe a nonempty range of complete characters containing non-whitespace text. The full document provides model context; only the selected passage is replaced. Unselected text and whitespace at the selection boundaries are preserved exactly. Both saved text snapshots represent the complete document.
+
+`GET /api/runs` returns recent revisions, and `GET /api/runs/:id` restores one revision. `PATCH /api/runs/:id` saves individual or bulk edit decisions and feedback. Invalid edit IDs reject the entire update. Documents and generated results are limited to 30,000 characters; there is no sentence-count limit.
 
 ## Checks
 
