@@ -31,7 +31,7 @@ export function useWorkspace() {
   const [run, setRun] = useState<Run | null>(null);
   const [preview, setPreview] = useState<Run | null>(null);
   const [history, setHistory] = useState<Run[]>([]);
-  const [sidebar, setSidebar] = useState<'revise' | 'history' | 'rules' | 'fidelity' | null>(null);
+  const [sidebar, setSidebar] = useState<'history' | 'rules' | 'fidelity' | null>(null);
   const [selection, setSelection] = useState<TextSelection | null>(null);
   const [busy, setBusy] = useState(initial.draft.activeRunId ? 'Restoring review…' : '');
   const operation = useRef(!!initial.draft.activeRunId);
@@ -125,7 +125,7 @@ export function useWorkspace() {
     const next = end > start ? { start, end } : null;
     setSelection(current => current?.start === next?.start && current?.end === next?.end ? current : next);
   }
-  async function openSidebar(next: 'revise' | 'history') {
+  async function openSidebar(next: 'history') {
     setSidebar(current => current === next ? null : next);
     if (next === 'history') {
       try { receiveHistory(await api<Run[]>('/api/runs')); }
@@ -134,11 +134,12 @@ export function useWorkspace() {
   }
   async function generate(target?: TextSelection) {
     if (run || preview || draft.activeRunId || !begin('Revising…')) return;
+    const sent = draftRef.current;
     try {
-      const result = await api<Run>('/api/runs', { method: 'POST', body: JSON.stringify({ original: draft.text, instruction: draft.instruction, rules, ...(target ? { selection: target } : {}) }) });
+      const result = await api<Run>('/api/runs', { method: 'POST', body: JSON.stringify({ original: sent.text, instruction: sent.instruction, rules, ...(target ? { selection: target } : {}) }) });
       remember(result);
       setLastRun(result); setLastLoadError(''); setPreview(null); setPreviewFinalId(null); setPreviewDecisionId(null);
-      persist({ ...draftRef.current, lastRevisionId: result.id, lastFinalReviewId: null });
+      persist({ ...draftRef.current, instruction: draftRef.current.instruction === sent.instruction ? '' : draftRef.current.instruction, lastRevisionId: result.id, lastFinalReviewId: null });
       setSidebar(null);
       setSelection(null);
       if (result.edits.length) {
@@ -238,7 +239,7 @@ export function useWorkspace() {
   }
   function useResult(saved: Run, finalId?: string | null) {
     const snapshot = saved.finalReviews?.find(item => item.id === finalId);
-    persist({ ...resultDraft({ ...draftRef.current, instruction: saved.instruction }, saved), ...(snapshot ? { text: snapshot.text, lastFinalReviewId: snapshot.id } : {}) });
+    persist({ ...resultDraft(draftRef.current, saved), ...(snapshot ? { text: snapshot.text, lastFinalReviewId: snapshot.id } : {}) });
     setLastRun(saved); setLastLoadError(''); setRun(null); setPreview(null); setPreviewFinalId(null); setPreviewDecisionId(null); setSelection(null); setSidebar(null); setRestoreFailed(false); setError(''); setNotice('');
   }
   function closePreview() { setPreview(null); setPreviewFinalId(null); setPreviewDecisionId(null); setFocusEdit(null); }
@@ -262,7 +263,7 @@ export function useWorkspace() {
       const snapshot = saved.finalReviews?.find(item => item.id === finalId);
       const restored = snapshot ? await api<Run>(`/api/runs/${saved.id}`, { method: 'PATCH', body: JSON.stringify({ restoreFinalReviewId: snapshot.id }) }) : await api<Run>(`/api/runs/${saved.id}`);
       receive(restored); setRun(restored); setLastRun(restored);
-      persist({ ...draftRef.current, text: compose(restored), instruction: restored.instruction, activeRunId: restored.id, feedback: {}, lastRevisionId: restored.id, lastFinalReviewId: finalId });
+      persist({ ...draftRef.current, text: compose(restored), activeRunId: restored.id, feedback: {}, lastRevisionId: restored.id, lastFinalReviewId: finalId });
       setPreview(null); setPreviewFinalId(null); setPreviewDecisionId(null); setSidebar(null); setRestoreFailed(false);
     } catch (failure) { setError((failure as Error).message); }
     finally { end(); }

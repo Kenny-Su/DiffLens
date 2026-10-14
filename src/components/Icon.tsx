@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 const paths = {
   plus: <path d="M12 5v14M5 12h14" />,
+  up: <path d="M12 19V5m-6 6 6-6 6 6" />,
   arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
   check: <path d="m5 12 4 4L19 6" />,
   close: <path d="m6 6 12 12M6 18 18 6" />,

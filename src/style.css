@@ -37,7 +37,6 @@ input[type=checkbox] { accent-color: var(--green); width: 13px; height: 13px; ma
 .toolbar-end { margin-left: auto; }
 .toolbar-button { padding: 7px 9px; border-color: transparent; background: transparent; color: #6f7869; white-space: nowrap; }
 .toolbar-button.active { background: #eef2ec; color: #3f5744; }
-.revise-toggle { margin-left: 12px; padding: 8px 15px; }
 .workspace { display: flex; flex: 1; min-height: 0; }
 .document-workspace { min-width: 0; flex: 1; display: flex; flex-direction: column; position: relative; }
 .writing-surface { width: 100%; max-width: 920px; margin: 0 auto; padding: 51px 64px 0; flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -74,7 +73,7 @@ input[type=checkbox] { accent-color: var(--green); width: 13px; height: 13px; ma
 .field-error { color: #a35c49; font-size: 11px; line-height: 1.6; margin-top: 8px; }
 .instruction-composer { border: 1px solid #dfe3dd; border-radius: 9px; background: white; }
 .instruction-composer:focus-within { border-color: #91ab99; box-shadow: 0 0 0 2px #91ab9918; }
-.instruction-input { min-height: 160px; font-size: 13px; border: 0; background: transparent; }
+.instruction-input { min-height: 90px; max-height: 240px; resize: none; font-size: 13px; border: 0; background: transparent; }
 .instruction-input:focus-visible { outline: none; }
 .instruction-actions { display: flex; justify-content: flex-end; padding: 10px; }
 .rule-item { margin-top: 14px; }
@@ -169,7 +168,6 @@ input[type=checkbox] { accent-color: var(--green); width: 13px; height: 13px; ma
   .toolbar-start, .toolbar-end { gap: 1px; }
   .toolbar-button { padding: 7px; }
   .toolbar-button span { display: none; }
-  .revise-toggle { padding: 7px 10px; margin-left: 6px; font-size: 11px; }
   .writing-surface { padding: 30px 24px 0; }
   .document-input, .document-passage { font-size: 17px; line-height: 1.9; }
   .document-label { margin-bottom: 18px; }
@@ -230,3 +228,20 @@ input[type=checkbox] { accent-color: var(--green); width: 13px; height: 13px; ma
 .copy-notification { position: fixed; top: 72px; left: 50%; transform: translateX(-50%); z-index: 100; pointer-events: none; }
 .copy-notification-pill { display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 999px; color: #fff; background: #35483a; box-shadow: 0 4px 16px #24332924; font-size: 12px; white-space: nowrap; }
 .copy-notification-pill svg { width: 14px; height: 14px; }
+
+.floating-revision { position: fixed; right: max(28px, env(safe-area-inset-right)); bottom: calc(58px + env(safe-area-inset-bottom)); z-index: 30; }
+.floating-revision [hidden] { display: none; }
+.floating-revision-trigger { border-radius: 999px; padding: 14px 20px; box-shadow: 0 6px 24px #24332926; font-size: 13px; }
+.floating-revision-panel { position: absolute; right: 0; bottom: 64px; width: min(360px, calc(100vw - 32px)); padding: 12px; border: 1px solid #dfe5d7; border-radius: 20px; background: #fff; box-shadow: 0 10px 38px #24332924, 0 2px 8px #2433290a; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(10px) scale(.96); transform-origin: bottom right; transition: opacity .2s ease, transform .2s cubic-bezier(.2,.8,.2,1), visibility 0s linear .2s; }
+.floating-revision-heading { display: flex; justify-content: space-between; align-items: center; padding: 0 3px 9px 5px; font-size: 12px; font-weight: 550; color: #54705d; }
+.floating-revision-heading>span { display: inline-flex; align-items: center; gap: 7px; }
+.floating-revision-heading>div { display: flex; }
+.floating-revision .instruction-composer { border: none; background: #f7f9f5; border-radius: 12px; }
+.floating-revision .instruction-input { min-height: 100px; max-height: min(240px, 35dvh); resize: none; font-size: 13px; }
+.floating-revision .instruction-actions { padding: 8px; }
+.floating-revision .instruction-actions button { border-radius: 999px; padding: 8px 14px; }
+.floating-revision.open .floating-revision-panel { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0) scale(1); transition-delay: 0s; }
+@media (max-width: 640px) { .floating-revision { right: 16px; bottom: calc(52px + env(safe-area-inset-bottom)); } }
+@media (prefers-reduced-motion: reduce) { .floating-revision-panel { transition: none; } }
+
+.instruction-actions .instruction-send, .floating-revision .instruction-actions .instruction-send { width: 36px; height: 36px; padding: 0; border-radius: 50%; flex-shrink: 0; }
