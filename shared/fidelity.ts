@@ -1,5 +1,5 @@
 import type { Assessment, FidelityAudit, FinalReview, Rule, Run } from './types.js';
-export const AUDIT_PROMPT_VERSION = 'fidelity-1';
+export const AUDIT_PROMPT_VERSION = 'fidelity-2';
 export const defaultRules: Rule[] = [
   { id: 'scientific-claims', text: 'Preserve claim strength, uncertainty, attribution, and causal or comparative scope unless explicitly instructed to change them.', enabled: true },
   { id: 'scientific-numbers', text: 'Preserve numerical values, units, ranges, and statistical qualifiers unless explicitly instructed to change them.', enabled: true },
@@ -20,10 +20,10 @@ export function auditLabel(audit?: FidelityAudit) {
 export function runAudits(run: Run) { return [run.proposalAudit, ...(run.finalReviews || []).map(review => review.audit)].filter((audit): audit is FidelityAudit => !!audit); }
 export function getAudit(run: Run, auditId: string) { return runAudits(run).find(audit => audit.id === auditId); }
 export function finalSnapshot(run: Run, review: FinalReview): Run {
-  return { ...run, revised: review.text, edits: review.edits, segments: review.segments };
+  return { ...run, revised: review.text, edits: review.edits, segments: review.segments, passages: review.passages, passageReviews: {} };
 }
 export function proposalSnapshot(run: Run, review: FinalReview): Run {
-  return { ...run, edits: run.edits.map(edit => ({ ...edit, ...review.decisions.find(decision => decision.id === edit.id) })) };
+  return { ...run, edits: run.edits.map(edit => ({ ...edit, ...review.decisions.find(decision => decision.id === edit.id) })), passageReviews: review.passageReviews ?? {} };
 }
 // A slow poll or PATCH response must never replace a newer server version.
 export function newerRun(current: Run, incoming: Run): Run { return (incoming.version ?? 0) >= (current.version ?? 0) ? incoming : current; }

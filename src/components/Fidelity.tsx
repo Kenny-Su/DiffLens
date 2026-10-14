@@ -1,5 +1,8 @@
 import type { Assessment, FidelityAudit } from '../../shared/types';
 import { auditLabel, isChecking, needsAttention } from '../../shared/fidelity';
+import { passageState } from '../../shared/passages';
+import { proposalSnapshot } from '../../shared/fidelity';
+import type { ReviewPassage } from '../../shared/types';
 import type { Workspace } from '../useWorkspace';
 import { Icon } from './Icon';
 
@@ -13,6 +16,16 @@ function Finding({ item, workspace: w }: { item: Assessment; workspace: Workspac
   const run = w.inspectedRun!, audit = w.inspectedAudit!;
   const saved = audit.feedback[item.id], key = `${audit.id}/${item.id}`;
   const note = w.draft.auditFeedback[key] ?? saved?.text ?? '';
+  function links(ids: string[], passages: ReviewPassage[] = []) {
+    const seen = new Set<string>();
+    return ids.flatMap(id => {
+      const index = passages.findIndex(passage => passage.editIds.includes(id));
+      const key = index < 0 ? id : passages[index].id;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ id, index, passage: passages[index] }];
+    });
+  }
   async function save(disagreed: boolean, button: HTMLButtonElement, fromKeyboard: boolean) {
     await w.saveAuditFeedback(run, audit.id, item.id, disagreed, note);
     if (fromKeyboard) requestAnimationFrame(() => {
@@ -25,8 +38,12 @@ function Finding({ item, workspace: w }: { item: Assessment; workspace: Workspac
     <p>{item.reason}</p>
     {!!item.ruleIds.length && <div className="audit-rule-refs">{item.ruleIds.map(id => <p key={id}>Rule: {run.rules.find(rule => rule.id === id)?.text}</p>)}</div>}
     <div className="audit-links">
-      {item.editIds.map(id => <button className="text-button" key={id} onClick={() => w.inspectSnapshot(run, w.auditFinalId, id)}>View change {id.slice(1)}<Icon name="arrow" /></button>)}
-      {!!w.auditFinal && item.proposalEditIds.map(id => <button className="text-button" key={id} onClick={() => w.inspectProposal(run, w.auditFinal!.id, id)}>Proposal change {id.slice(1)} ({w.auditFinal!.decisions.find(edit => edit.id === id)?.decision || 'pending'})<Icon name="arrow" /></button>)}
+      {links(item.editIds, w.auditFinal?.passages ?? run.passages).map(({ id, index }) => <button className="text-button" key={id} onClick={() => w.inspectSnapshot(run, w.auditFinalId, id)}>{index < 0 ? `View change ${id.slice(1)}` : `View passage ${index + 1}`}<Icon name="arrow" /></button>)}
+      {!!w.auditFinal && links(item.proposalEditIds, run.passages).map(({ id, index, passage }) => {
+        const manual = passage && w.auditFinal!.passageReviews?.[passage.id]?.replacementText !== undefined;
+        const decision = passage ? passageState(proposalSnapshot(run, w.auditFinal!), passage) : w.auditFinal!.decisions.find(edit => edit.id === id)?.decision || 'pending';
+        return <button className="text-button" key={id} onClick={() => w.inspectProposal(run, w.auditFinal!.id, id)}>{index < 0 ? `Proposal change ${id.slice(1)}` : `Proposal passage ${index + 1}`} ({manual ? 'manually rewritten' : decision === 'mixed' ? 'partially reviewed' : decision})<Icon name="arrow" /></button>;
+      })}
     </div>
     <button className="text-button disagreement-button" disabled={!!w.auditBusy} onClick={event => save(!saved?.disagreed, event.currentTarget, event.detail === 0)}>{saved?.disagreed ? 'Undo disagreement' : 'Disagree with this finding'}</button>
     {(saved?.disagreed || w.draft.auditFeedback[key] !== undefined) && <div className="audit-feedback"><label className="field-label" htmlFor={`audit-note-${item.id}`}>Your explanation (optional)</label><textarea id={`audit-note-${item.id}`} value={note} maxLength={5000} disabled={!!w.auditBusy} onChange={event => w.editAuditFeedback(key, event.target.value)} placeholder="What did the check miss?" /><button disabled={!!w.auditBusy || note === (saved?.text ?? '')} onClick={event => save(true, event.currentTarget, event.detail === 0)}>Save feedback</button></div>}

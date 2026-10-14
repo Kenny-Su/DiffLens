@@ -4,6 +4,12 @@ export interface TextSelection { start: number; end: number }
 export interface Edit { id: string; before: string; after: string; start: number; end: number; decision: Decision; feedback: string }
 export interface Segment { text?: string; editId?: string }
 export interface EditUpdate { id: string; decision: Decision; feedback: string }
+export interface ReviewPassage {
+  id: string; start: number; end: number; revisedStart: number; revisedEnd: number;
+  before: string; after: string; editIds: string[];
+}
+export interface PassageReview { replacementText?: string; feedback: string }
+export interface PassageUpdate { id: string; decision: Decision; feedback: string; replacementText?: string }
 export type AssessmentKind = 'edit' | 'request' | 'prohibition' | 'rule' | 'conflict';
 export type AssessmentOutcome = 'acceptable' | 'unacceptable' | 'fulfilled' | 'partial' | 'unfulfilled' | 'respected' | 'violated' | 'not_applicable' | 'uncertain' | 'conflict';
 export interface Assessment {
@@ -17,10 +23,12 @@ export interface FidelityAudit {
 }
 export interface FinalReview {
   id: string; text: string; edits: Edit[]; segments: Segment[]; decisions: EditUpdate[]; decisionKey: string; createdAt: string; audit: FidelityAudit;
+  passages?: ReviewPassage[]; passageReviews?: Record<string, PassageReview>;
 }
 export interface Run {
   id: string; original: string; revised: string; instruction: string; rules: Rule[]; edits: Edit[]; segments: Segment[]; createdAt: string;
   selection?: TextSelection; model?: string; version?: number; proposalAudit?: FidelityAudit; finalReviews?: FinalReview[];
+  passages?: ReviewPassage[]; passageReviews?: Record<string, PassageReview>;
 }
 export interface RevisionRequest { original: string; instruction: string; rules: Rule[]; selection?: TextSelection }
 export interface FinalizeResponse { run: Run; finalReviewId: string }

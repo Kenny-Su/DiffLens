@@ -1,13 +1,15 @@
 import { diffWordsWithSpace } from 'diff';
 import { randomUUID } from 'node:crypto';
 import { revisionTarget } from '../shared/selection.js';
+import { buildPassages } from '../shared/passages.js';
 import type { Run, Rule, Edit, Segment, TextSelection } from '../shared/types.js';
 
 export function createRevision(original: string, replacement: string, instruction: string, rules: Rule[], selection?: TextSelection): Run {
   const target = selection ? revisionTarget(original, selection) : { start: 0, end: original.length };
   const after = selection ? replacement.trim() : replacement;
   const revised = original.slice(0, target.start) + after + original.slice(target.end);
-  return { id: randomUUID(), original, revised, instruction, rules, ...createDocumentDiff(original, revised, selection), createdAt: new Date().toISOString(), ...(selection ? { selection } : {}) };
+  const run = { id: randomUUID(), original, revised, instruction, rules, ...createDocumentDiff(original, revised, selection), createdAt: new Date().toISOString(), ...(selection ? { selection } : {}) };
+  return { ...run, passages: buildPassages(run), passageReviews: {} };
 }
 
 export function createDocumentDiff(original: string, revised: string, selection?: TextSelection) {

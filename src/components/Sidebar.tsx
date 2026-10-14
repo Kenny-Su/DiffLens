@@ -56,7 +56,7 @@ export function Sidebar({ workspace: w, mobile, onRevisit }: { workspace: Worksp
         <p className="field-hint">Inspect a revision without replacing your draft.</p>
         {!w.history.length && <p className="history-empty">Your revisions will appear here.</p>}
         <div className="history-list">{w.history.map(item => <button className={`history-item ${w.preview?.id === item.id ? 'active' : ''}`} key={item.id} disabled={!!w.busy} onClick={() => { w.previewRun(item); if (mobile) w.setSidebar(null); }}>
-          <strong>{item.instruction}</strong><span>{item.original.slice(0, 90)}</span><small>{new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {item.edits.length} {item.edits.length === 1 ? 'change' : 'changes'}{item.selection ? ' · Selection' : ''}</small>
+          <strong>{item.instruction}</strong><span>{item.original.slice(0, 90)}</span><small>{new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {item.passages?.length ?? 0} {item.passages?.length === 1 ? 'passage' : 'passages'}{item.selection ? ' · Selection' : ''}</small>
         </button>)}</div>
       </>}</div>
     </aside>

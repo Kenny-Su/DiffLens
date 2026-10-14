@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { compose } from '../shared/compose';
-import type { Decision, EditUpdate, Rule, Run, TextSelection, FinalizeResponse } from '../shared/types';
+import type { Decision, EditUpdate, PassageUpdate, Rule, Run, TextSelection, FinalizeResponse } from '../shared/types';
+import { passageKey } from '../shared/passages';
 import { newerRun, finalSnapshot, proposalSnapshot } from '../shared/fidelity';
 import { useAuditPolling } from './useAuditPolling';
 import { api } from './lib/api';
 import { emptyDraft, readDraft, resultDraft, writeDraft, type Draft } from './lib/draft';
 import { readRules, RULES_KEY } from './lib/rules';
+import { acknowledgeDrafts, unappliedPassage, updatePassageDraft } from './lib/reviewDrafts';
 
 function initialDraft() {
   try { return { draft: readDraft(localStorage), error: '' }; }
@@ -154,18 +156,65 @@ export function useWorkspace() {
     persist({ ...draftRef.current, feedback });
     return result;
   }
-  async function decide(ids: string[], decision: Decision) {
-    if (!run || !ids.length || !begin('Saving changes…')) return;
-    try { await patch(run.edits.filter(edit => ids.includes(edit.id)).map(edit => ({ id: edit.id, decision, feedback: draftRef.current.feedback[edit.id] ?? edit.feedback }))); }
+  function guardPassageDrafts() {
+    if (!run) return false;
+    const passage = unappliedPassage(run, draftRef.current);
+    if (!passage) return false;
+    setPreview(null); setPreviewFinalId(null); setPreviewDecisionId(null); setSidebar(null);
+    setNotice('Apply your edited passage or reject it before continuing.');
+    setFocusEdit({ id: passage.editIds[0], nonce: ++focusNonce.current });
+    return true;
+  }
+  async function decide(ids: string[], decision: Decision, replacementText?: string, bulk = false) {
+    if (!run || !ids.length || (bulk && guardPassageDrafts()) || !begin('Saving changes…')) return false;
+    const sent = draftRef.current;
+    const passages = (run.passages || []).filter(passage => ids.includes(passage.id));
+    const updates: PassageUpdate[] = passages.map(passage => ({ id: passage.id, decision, feedback: sent.passageFeedback[passageKey(run.id, passage.id)] ?? run.passageReviews?.[passage.id]?.feedback ?? '',
+      ...(decision === 'accepted' && replacementText !== undefined ? { replacementText } : {}) }));
+    try {
+      const result = await api<Run>(`/api/runs/${run.id}`, { method: 'PATCH', body: JSON.stringify({ passages: updates }) });
+      receive(result);
+      const keys = passages.map(passage => passageKey(run.id, passage.id));
+      const passageDrafts = decision === 'pending' ? { ...draftRef.current.passageDrafts } : acknowledgeDrafts(draftRef.current.passageDrafts, sent.passageDrafts, keys);
+      if (decision === 'pending') for (const passage of passages) {
+        const manual = run.passageReviews?.[passage.id]?.replacementText, key = passageKey(run.id, passage.id);
+        if (manual !== undefined && passageDrafts[key] === undefined) passageDrafts[key] = manual;
+      }
+      persist({ ...draftRef.current, passageDrafts, passageFeedback: acknowledgeDrafts(draftRef.current.passageFeedback, sent.passageFeedback, keys) });
+      return true;
+    }
     catch (error) { setError(`Changes were not saved: ${(error as Error).message}`); }
     finally { end(); }
+    return false;
   }
-  function editFeedback(id: string, feedback: string) { persist({ ...draftRef.current, feedback: { ...draftRef.current.feedback, [id]: feedback } }); }
+  function editPassage(id: string, text: string) {
+    const passage = run?.passages?.find(item => item.id === id);
+    if (run && passage) persist(updatePassageDraft(draftRef.current, run, passage, text));
+  }
+  function editFeedback(id: string, feedback: string) { if (run) persist({ ...draftRef.current, passageFeedback: { ...draftRef.current.passageFeedback, [passageKey(run.id, id)]: feedback } }); }
+  async function savePassageFeedback(id: string) {
+    if (!run || !begin('Saving feedback…')) return;
+    const sent = draftRef.current, key = passageKey(run.id, id);
+    try {
+      const result = await api<Run>(`/api/runs/${run.id}/passages/${id}/feedback`, { method: 'PATCH', body: JSON.stringify({ feedback: sent.passageFeedback[key] ?? run.passageReviews?.[id]?.feedback ?? '' }) });
+      receive(result);
+      persist({ ...draftRef.current, passageFeedback: acknowledgeDrafts(draftRef.current.passageFeedback, sent.passageFeedback, [key]) });
+    } catch (error) { setError(`Feedback was not saved: ${(error as Error).message}`); }
+    finally { end(); }
+  }
   async function finishReview() {
-    if (!run || !begin('Saving review…')) return;
+    if (!run || guardPassageDrafts() || !begin('Saving review…')) return;
     try {
       const edits = run.edits.filter(edit => draftRef.current.feedback[edit.id] !== undefined && draftRef.current.feedback[edit.id] !== edit.feedback).map(edit => ({ id: edit.id, decision: edit.decision, feedback: draftRef.current.feedback[edit.id] }));
-      const result = edits.length ? await patch(edits) : run;
+      let result = edits.length ? await patch(edits) : run;
+      const sent = draftRef.current;
+      for (const passage of result.passages || []) {
+        const key = passageKey(run.id, passage.id), feedback = sent.passageFeedback[key];
+        if (feedback === undefined) continue;
+        result = await api<Run>(`/api/runs/${run.id}/passages/${passage.id}/feedback`, { method: 'PATCH', body: JSON.stringify({ feedback }) });
+        receive(result);
+        persist({ ...draftRef.current, passageFeedback: acknowledgeDrafts(draftRef.current.passageFeedback, sent.passageFeedback, [key]) });
+      }
       const finalized = await api<FinalizeResponse>(`/api/runs/${result.id}/finalize`, { method: 'POST' });
       const snapshot = finalized.run.finalReviews!.find(item => item.id === finalized.finalReviewId)!;
       receive(finalized.run); setLastRun(finalized.run);
@@ -211,7 +260,7 @@ export function useWorkspace() {
     if (!begin('Restoring decisions…')) return;
     try {
       const snapshot = saved.finalReviews?.find(item => item.id === finalId);
-      const restored = snapshot ? await api<Run>(`/api/runs/${saved.id}`, { method: 'PATCH', body: JSON.stringify({ edits: snapshot.decisions }) }) : await api<Run>(`/api/runs/${saved.id}`);
+      const restored = snapshot ? await api<Run>(`/api/runs/${saved.id}`, { method: 'PATCH', body: JSON.stringify({ restoreFinalReviewId: snapshot.id }) }) : await api<Run>(`/api/runs/${saved.id}`);
       receive(restored); setRun(restored); setLastRun(restored);
       persist({ ...draftRef.current, text: compose(restored), instruction: restored.instruction, activeRunId: restored.id, feedback: {}, lastRevisionId: restored.id, lastFinalReviewId: finalId });
       setPreview(null); setPreviewFinalId(null); setPreviewDecisionId(null); setSidebar(null); setRestoreFailed(false);
@@ -261,7 +310,7 @@ export function useWorkspace() {
     lastRun, lastFinal, lastAudit, earlierSnapshot, lastLoadError, retryLastCheck, auditBusy, retryAudit, saveAuditFeedback, focusEdit,
     auditPollError: polling.error, retryPolling: polling.retry,
     editAuditFeedback: (key: string, text: string) => persist({ ...draftRef.current, auditFeedback: { ...draftRef.current.auditFeedback, [key]: text } }),
-    setError, setNotice, setSidebar, setCandidate, setRules, editText, captureSelection, openSidebar, generate, decide, editFeedback, finishReview, proposeRule, newDraft, useResult, restore, continueWithoutReview,
+    setError, setNotice, setSidebar, setCandidate, setRules, editText, captureSelection, openSidebar, generate, decide, editPassage, editFeedback, savePassageFeedback, finishReview, proposeRule, newDraft, useResult, restore, continueWithoutReview,
     editInstruction: (instruction: string) => persist({ ...draftRef.current, instruction }),
     retryStorage: () => persist(draftRef.current),
   };

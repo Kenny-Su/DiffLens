@@ -24,6 +24,7 @@ export const fidelityInstructions = `Audit revision fidelity, not external factu
 Return exactly one edit assessment for every target edit and exactly one rule assessment for every enabled rule (not_applicable is allowed). Decompose the entire immediate instruction into requests and prohibitions, each assessed separately. Do not turn standing rules into instruction clauses. Include unmet requests even when there are no edits. A fulfilled request must be supported by the target text; explain whether it was already satisfied if no target edit fulfills it. Partial fulfillment is partial, not fulfilled.
 Meaning changes are permitted when explicitly authorized; small wording changes can still be unacceptable. Check lost hedges, unsupported strengthening, altered numbers/units, citations, omissions, conditions, and cross-edit interactions. Do not silently prioritize conflicting instructions and rules: add a conflict assessment identifying the incompatible requirements. Honor explicit exceptions written into rules. Use uncertain when evidence does not justify a confident assessment.
 For a final result, judge the actual assembled target text against the original instruction literally. Human accept/reject choices are fallible context, not overrides: over-rejection may leave requests unfulfilled. Explain those gaps and link relevant proposal edits, including rejected ones. Do not flag a rejected proposal edit as present in the final text. Judge combinations of retained edits, not just each proposal in isolation.
+Author passage replacements are distinct from the model proposal. A passage with a manual replacement does not necessarily contain its accepted member edits: assess the actual target text. Manual edits can correct model mistakes or introduce new problems. Check them with the same instruction and rule constraints, and identify author contributions accurately.
 Use subjectId only for edit or rule assessments, matching its ID. For all other kinds use null. editIds always reference target edits; proposalEditIds reference edits in the model's proposal and may explain review decisions; ruleIds reference enabled rules. Provide concise, specific reasons. Never invent IDs. Return only the requested structured assessment.`;
 export function newAudit(model?: string): FidelityAudit {
   return { id: randomUUID(), status: 'pending', attempt: 0, promptVersion: AUDIT_PROMPT_VERSION, model, createdAt: new Date().toISOString(), assessments: [], feedback: {} };
@@ -35,6 +36,8 @@ export function auditInput(run: Run, final?: FinalReview) {
     target: final ? 'final' : 'proposal', original: run.original, targetText: final?.text ?? run.revised,
     instruction: run.instruction, selection: run.selection ?? null, rules: run.rules.filter(rule => rule.enabled), edits: clean(edits),
     proposal: { text: run.revised, edits: clean(run.edits) }, decisions: final?.decisions ?? [],
+    authorPassages: final ? (run.passages || []).map(passage => ({ id: passage.id, before: passage.before, proposed: passage.after, proposalEditIds: passage.editIds,
+      decisions: final.decisions.filter(decision => passage.editIds.includes(decision.id)), ...final.passageReviews?.[passage.id] })) : [],
   };
 }
 export function validateAssessment(raw: unknown, run: Run, final?: FinalReview): Assessment[] {
@@ -69,12 +72,17 @@ export function ruleEvidence(runs: Run[], currentRules: Rule[]) {
   const evidence = runs.flatMap(run => {
     const context = { runId: run.id, original: run.original, instruction: run.instruction, rules: run.rules };
     const edits = run.edits.filter(edit => edit.feedback.trim()).map(edit => ({ ...context, source: 'edit' as const, editId: edit.id, decision: edit.decision, before: edit.before, after: edit.after, feedback: edit.feedback }));
+    const passages = (run.passages || []).flatMap(passage => {
+      const review = run.passageReviews?.[passage.id];
+      return review?.feedback.trim() ? [{ ...context, source: 'passage' as const, passageId: passage.id, before: passage.before, after: passage.after, replacementText: review.replacementText,
+        decisions: run.edits.filter(edit => passage.editIds.includes(edit.id)).map(({ id, decision }) => ({ id, decision })), feedback: review.feedback }] : [];
+    });
     const audits = [{ audit: run.proposalAudit, text: run.revised, snapshotId: null }, ...(run.finalReviews || []).map(review => ({ audit: review.audit, text: review.text, snapshotId: review.id }))];
     const corrections = audits.flatMap(({ audit, text, snapshotId }) => audit?.assessments.flatMap(assessment => {
       const feedback = audit.feedback[assessment.id];
       return feedback?.disagreed && feedback.text.trim() ? [{ ...context, source: 'audit_disagreement' as const, auditId: audit.id, snapshotId, revised: text, assessment, feedback: feedback.text }] : [];
     }) || []);
-    return [...edits, ...corrections];
+    return [...edits, ...passages, ...corrections];
   });
   return { evidence, existingRules: currentRules };
 }
