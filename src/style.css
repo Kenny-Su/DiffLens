@@ -226,3 +226,7 @@ input[type=checkbox] { accent-color: var(--green); width: 13px; height: 13px; ma
 .audit-breakpoint p { margin: 10px 0; }
 .audit-playback-notice { padding: 12px 24px; background: #fff9e9; font-size: 12px; line-height: 1.6; }
 .audit-playback-notice button { margin-left: 10px; }
+
+.copy-notification { position: fixed; top: 72px; left: 50%; transform: translateX(-50%); z-index: 100; pointer-events: none; }
+.copy-notification-pill { display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 999px; color: #fff; background: #35483a; box-shadow: 0 4px 16px #24332924; font-size: 12px; white-space: nowrap; }
+.copy-notification-pill svg { width: 14px; height: 14px; }
