@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { Editor } from '@tiptap/react';
 import type { TextSelection } from '../../shared/types';
 import { selectionError } from '../../shared/selection';
 import { selectionAnchor } from '../lib/selectionAnchor';
@@ -6,7 +7,7 @@ import { Icon } from './Icon';
 import { InstructionComposer } from './InstructionComposer';
 
 interface Props {
-  editor: RefObject<HTMLTextAreaElement | null>;
+  editor: Editor;
   selection: TextSelection;
   text: string;
   instruction: string;
@@ -23,10 +24,10 @@ export function SelectionRevision({ editor, selection, text, instruction, busy, 
   const rangeError = selectionError(text, selection);
 
   useLayoutEffect(() => {
-    const input = editor.current, popup = panel.current;
+    const input = editor.view.dom, popup = panel.current;
     if (!input || !popup) return;
     const place = () => {
-      const anchor = selectionAnchor(input, selection);
+      const anchor = selectionAnchor(editor, selection);
       if (!anchor) return;
       const viewport = window.visualViewport;
       const x = (viewport?.offsetLeft || 0) + 12, y = (viewport?.offsetTop || 0) + 12;
@@ -64,11 +65,11 @@ export function SelectionRevision({ editor, selection, text, instruction, busy, 
     };
     const keyboard = (event: KeyboardEvent) => {
       if (document.querySelector('dialog[open]') || busy) return;
-      if (event.altKey && event.key === 'Enter' && event.target === editor.current) {
+      if (event.altKey && event.key === 'Enter' && editor.view.dom.contains(event.target as Node)) {
         event.preventDefault(); setDismissed(false); setOpen(true);
       }
       if (event.key === 'Escape' && !dismissed) {
-        event.preventDefault(); setOpen(false); setDismissed(true); editor.current?.focus({ preventScroll: true });
+        event.preventDefault(); setOpen(false); setDismissed(true); editor.commands.focus(undefined, { scrollIntoView: false });
       }
     };
     document.addEventListener('pointerdown', outside);
@@ -82,7 +83,7 @@ export function SelectionRevision({ editor, selection, text, instruction, busy, 
     {open && highlights.map((rect, index) => <span key={index} className="selection-highlight" aria-hidden="true" style={rect} />)}
     <div ref={panel} className={`selection-revision ${open ? 'open' : ''}`} role={open ? 'dialog' : undefined} aria-label={open ? 'Revise selected text' : undefined} style={{ ...style, visibility: visible ? 'visible' : 'hidden' }}>
     {open ? <>
-      <div className="selection-heading"><span>Revise selection</span><button className="icon-button" aria-label="Close selection revision" disabled={!!busy} onClick={() => { setOpen(false); setDismissed(true); editor.current?.focus({ preventScroll: true }); }}><Icon name="close" /></button></div>
+      <div className="selection-heading"><span>Revise selection</span><button className="icon-button" aria-label="Close selection revision" disabled={!!busy} onClick={() => { setOpen(false); setDismissed(true); editor.commands.focus(undefined, { scrollIntoView: false }); }}><Icon name="close" /></button></div>
       <InstructionComposer instruction={instruction} busy={busy} disabled={text.length > 30000 || !!rangeError} placeholder="How should this passage change?" autoFocus onChange={onInstruction} onSend={() => onSend(selection)} />
       {rangeError && <p className="field-error" role="alert">{rangeError}</p>}
     </> : <button className="selection-trigger" aria-haspopup="dialog" aria-expanded={false} aria-keyshortcuts="Alt+Enter" title="Revise selected text (Alt+Enter)" disabled={!!busy} onClick={() => setOpen(true)}><Icon name="edit" />Revise selection</button>}

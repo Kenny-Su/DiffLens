@@ -1,3 +1,4 @@
+import type { JSONContent } from '@tiptap/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { compose } from '../shared/compose';
 import type { Decision, EditUpdate, PassageUpdate, Rule, Run, TextSelection, FinalizeResponse } from '../shared/types';
@@ -115,9 +116,9 @@ export function useWorkspace() {
     setRestoreFailed(false);
     setError('');
   }
-  function editText(text: string) {
+  function editText(text: string, document?: JSONContent) {
     if (run || preview || operation.current || draft.activeRunId) return;
-    persist({ ...draftRef.current, text });
+    persist({ ...draftRef.current, text, document, documentText: document ? text : undefined });
     setSelection(null);
   }
   function captureSelection(start: number, end: number) {
@@ -263,7 +264,8 @@ export function useWorkspace() {
       const snapshot = saved.finalReviews?.find(item => item.id === finalId);
       const restored = snapshot ? await api<Run>(`/api/runs/${saved.id}`, { method: 'PATCH', body: JSON.stringify({ restoreFinalReviewId: snapshot.id }) }) : await api<Run>(`/api/runs/${saved.id}`);
       receive(restored); setRun(restored); setLastRun(restored);
-      persist({ ...draftRef.current, text: compose(restored), activeRunId: restored.id, feedback: {}, lastRevisionId: restored.id, lastFinalReviewId: finalId });
+      const keepDocument = (draftRef.current.documentText ?? draftRef.current.text) === restored.original;
+      persist({ ...draftRef.current, document: keepDocument ? draftRef.current.document : undefined, documentText: keepDocument ? draftRef.current.documentText ?? draftRef.current.text : undefined, text: compose(restored), activeRunId: restored.id, feedback: {}, lastRevisionId: restored.id, lastFinalReviewId: finalId });
       setPreview(null); setPreviewFinalId(null); setPreviewDecisionId(null); setSidebar(null); setRestoreFailed(false);
     } catch (failure) { setError((failure as Error).message); }
     finally { end(); }
