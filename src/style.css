@@ -101,12 +101,16 @@ input[type=checkbox] { accent-color: var(--green); width: 13px; height: 13px; ma
 .review-options label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .document-scroll { overflow: auto; flex: 1; min-height: 0; }
 .review-view-options { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.review-text del, .diff-legend del { color: #9b4338; background: #fbe9e5; }
+.review-text ins, .diff-legend ins { color: #326340; background: #e5f1e2; text-decoration: underline; text-underline-offset: 3px; }
+.review-text del + ins { margin-left: .2em; }
+.diff-legend { display: flex; gap: 12px; font-size: 11px; }
 .review-passage { position: relative; display: inline; border-radius: 2px; cursor: pointer; -webkit-box-decoration-break: clone; box-decoration-break: clone; box-shadow: inset 0 -1px #c9d5c5; }
 .review-passage:hover, .review-passage.selected { background: #eef3e9; }
 /* Keep the focus ring inside each text fragment, clear of neighboring lines. */
 .review-passage:focus-visible { outline: none; background: #eef3e9; box-shadow: inset 0 0 0 2px #739482; }
 .review-passage.has-concern { text-decoration: underline dotted #b98c33; text-underline-offset: 5px; }
-.deleted-passage { color: #68795d; font: 11px/1.8 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 2px 5px; border: 1px dashed #bac8b1; border-radius: 3px; }
+.empty-passage { color: #68795d; font: 11px/1.8 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 2px 5px; border: 1px dashed #bac8b1; border-radius: 3px; }
 .review-hint { font-size: 11px; color: var(--muted); margin-top: 40px; line-height: 1.7; }
 .passage-inspector { margin: 18px 0 26px; padding: 19px; border: 1px solid #dfe5d7; border-radius: 9px; background: #f8faf5; overflow-wrap: anywhere; }
 .passage-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 17px; font-size: 12px; }
@@ -197,16 +201,6 @@ input[type=checkbox] { accent-color: var(--green); width: 13px; height: 13px; ma
   .footer-check { gap: 4px 8px; max-width: 75%; }
   .fidelity-status { font-size: 9px; }
 }
-
-.review-view-options button, .review-view-options select { font-size: 11px; }
-.playback-status { color: var(--muted); font-size: 11px; }
-.transformation-sentence { background: #f6e7b680; border-radius: 2px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
-.transformation-caret { display: inline; border-left: 2px solid #52715b; margin-left: -1px; }
-
-.audit-breakpoint { margin: 18px 0 0; padding: 18px; border: 1px solid #dfc57e; border-left: 4px solid #b98c33; border-radius: 8px; background: #fff9e9; font-size: 13px; line-height: 1.6; }
-.audit-breakpoint p { margin: 10px 0; }
-.audit-playback-notice { padding: 12px 24px; background: #fff9e9; font-size: 12px; line-height: 1.6; }
-.audit-playback-notice button { margin-left: 10px; }
 
 .copy-notification { position: fixed; top: 72px; left: 50%; transform: translateX(-50%); z-index: 100; pointer-events: none; }
 .copy-notification-pill { display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 999px; color: #fff; background: #35483a; box-shadow: 0 4px 16px #24332924; font-size: 12px; white-space: nowrap; }

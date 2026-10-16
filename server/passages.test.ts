@@ -9,8 +9,6 @@ import { finalSnapshot, proposalSnapshot } from '../shared/fidelity.js';
 import { auditInput, newAudit, ruleEvidence } from './fidelity.js';
 import { emptyDraft, readDraft, writeDraft } from '../src/lib/draft.js';
 import { acknowledgeDrafts, unappliedPassage, updatePassageDraft } from '../src/lib/reviewDrafts.js';
-import { resumeAfterDecision, sentenceConcerns } from '../src/lib/breakpoints.js';
-import { characters, transformationFrame, transformationSteps } from '../src/lib/transformation.js';
 import { reviewDocument } from '../src/lib/reviewDocument.js';
 import type { Run, FinalReview } from '../shared/types.js';
 
@@ -36,7 +34,7 @@ test('passages group related words, respect common sentence boundaries, and reco
     const passages = run.passages!;
     if (count !== undefined) assert.equal(passages.length, count, `${before} -> ${after}`);
     assert.deepEqual(passages.flatMap(passage => passage.editIds), run.edits.map(edit => edit.id));
-    assert.equal(reviewDocument(run).blocks.flat().map(chunk => chunk.text).join(''), after);
+    assert.equal(reviewDocument(run).blocks.flat().flatMap(chunk => chunk.parts ?? [{ text: chunk.text }]).filter(part => !part.removed).map(part => part.text).join(''), after);
     assert.equal(compose(run), before);
     let end = 0;
     for (const passage of passages) {
@@ -194,7 +192,7 @@ test('alignment anchors never lose repeated text, zero-width edits, or paragraph
     run.edits.forEach(edit => edit.decision = 'accepted');
     run.passageReviews = Object.fromEntries(run.passages!.map(passage => [passage.id, { replacementText: passage.after, feedback: '' }]));
     assert.equal(compose(run), revised, `case ${attempt}`);
-    assert.equal(reviewDocument(run).blocks.flat().map(chunk => chunk.text).join(''), revised, `render case ${attempt}`);
+    assert.equal(reviewDocument(run).blocks.flat().flatMap(chunk => chunk.parts ?? [{ text: chunk.text }]).filter(part => !part.removed).map(part => part.text).join(''), revised, `render case ${attempt}`);
   }
 });
 
@@ -221,75 +219,4 @@ test('an audit completing after a manual replacement preserves the applied text 
   assert.equal(saved.proposalAudit?.status, 'complete');
   assert.equal(compose(saved), 'The intervention could reduce error.');
   assert.equal(saved.passageReviews?.[passage.id].feedback, 'Keep the hedge.');
-});
-
-
-test('transformation events reconstruct exact targets without changing review decisions', () => {
-  for (const [before, after] of examples) {
-    const run = createRevision(before, after, 'Revise.', []);
-    const decisions = run.edits.map(edit => edit.decision);
-    const text = Object.fromEntries(run.passages!.map(passage => [passage.id, passage.before]));
-    for (const step of transformationSteps(run)) {
-      assert.equal(text[step.passageId], step.before);
-      assert.equal(step.before.slice(step.start, step.start + step.removed.length), step.removed);
-      text[step.passageId] = step.after;
-    }
-    assert.equal(reviewDocument(run, true, text).blocks.flat().map(chunk => chunk.text).join(''), after);
-    assert.deepEqual(run.edits.map(edit => edit.decision), decisions);
-    run.edits.forEach(edit => edit.decision = 'rejected');
-    assert.equal(transformationSteps(run).length, 0);
-  }
-});
-
-
-test('sentence playback groups local edits and character frames preserve graphemes', () => {
-  const run = createRevision('A red apple and a blue pear. Another old sentence.', 'A green apple and a yellow pear. Another new sentence.', 'Colors.', []);
-  const steps = transformationSteps(run);
-  assert.equal(steps[0].sentenceId, steps[1].sentenceId);
-  assert.notEqual(steps[0].sentenceId, steps.at(-1)!.sentenceId);
-  for (const [before, after] of [...examples, ['A 👩‍🔬 scientist studies é.', 'A 🧑‍🔬 scientist studies á.']] as const) {
-    for (const step of transformationSteps(createRevision(before, after, 'Revise.', []))) {
-      assert.equal(transformationFrame(step, 'highlight', 0).text, step.before);
-      assert.equal(transformationFrame(step, 'out', 0).text, step.before);
-      const removed = characters(step.removed), added = characters(step.added);
-      assert.equal(transformationFrame(step, 'out', removed.length).text, transformationFrame(step, 'in', 0).text);
-      assert.equal(transformationFrame(step, 'in', added.length).text, step.after);
-      for (let index = 0; index <= added.length; index++) {
-        const frame = transformationFrame(step, 'in', index);
-        assert.ok(frame.end >= frame.start);
-        assert.ok(frame.caret >= frame.start && frame.caret <= frame.end);
-      }
-    }
-  }
-  assert.deepEqual(characters('👩‍🔬é'), ['👩‍🔬', 'é']);
-});
-
-
-test('breakpoints associate concerns with the affected sentence and wait for a completed audit', () => {
-  const run = createRevision('It may help. Another old sentence.', 'It helps. Another new sentence.', 'Revise.', []);
-  const steps = transformationSteps(run);
-  const first = steps[0], last = steps.at(-1)!;
-  const audit = newAudit();
-  audit.status = 'complete';
-  audit.assessments = [{ id: 'a', kind: 'edit', subjectId: first.editIds[0], text: 'Claim strength', outcome: 'unacceptable', reason: 'Hedge removed.', editIds: first.editIds, proposalEditIds: [], ruleIds: [] }];
-  assert.equal(sentenceConcerns(first, audit).length, 1);
-  assert.equal(sentenceConcerns(last, audit).length, 0);
-  audit.status = 'running';
-  assert.equal(sentenceConcerns(first, audit).length, 0);
-  audit.status = 'failed';
-  assert.equal(sentenceConcerns(first, audit).length, 0);
-});
-
-test('saved breakpoint decisions rebuild playback for reject, manual edit, and later passages', () => {
-  const run = createRevision('It may help. Another old sentence.', 'It helps. Another new sentence.', 'Revise.', []);
-  const first = run.passages![0];
-  const rejected = resumeAfterDecision(run, first.id, 'rejected');
-  assert.ok(transformationSteps(rejected.run).slice(rejected.cursor).every(step => step.passageId !== first.id));
-  const accepted = resumeAfterDecision(run, first.id, 'accepted', 'It could help.');
-  const steps = transformationSteps(accepted.run);
-  assert.equal(steps[accepted.cursor].passageId, first.id);
-  assert.equal(steps.filter(step => step.passageId === first.id).at(-1)!.after, 'It could help.');
-  assert.ok(run.edits.every(edit => edit.decision === 'pending'));
-  const final = resumeAfterDecision(rejected.run, run.passages!.at(-1)!.id, 'rejected');
-  assert.equal(final.cursor, transformationSteps(final.run).length);
 });

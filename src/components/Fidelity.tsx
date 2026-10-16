@@ -1,8 +1,6 @@
-import type { Assessment, FidelityAudit } from '../../shared/types';
-import { auditLabel, isChecking, needsAttention } from '../../shared/fidelity';
+import type { Assessment, FidelityAudit, ReviewPassage } from '../../shared/types';
+import { auditLabel, isChecking, needsAttention, proposalSnapshot } from '../../shared/fidelity';
 import { passageState } from '../../shared/passages';
-import { proposalSnapshot } from '../../shared/fidelity';
-import type { ReviewPassage } from '../../shared/types';
 import type { Workspace } from '../useWorkspace';
 import { Icon } from './Icon';
 

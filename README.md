@@ -24,9 +24,9 @@ Open http://127.0.0.1:3001. The build type-checks the project and replaces `dist
 
 ## Workflow
 
-- Write in the native textarea. There is no formatting toolbar, Markdown/LaTeX renderer, or rich-text document model. Writing and review share typography and page width.
+- Write in the native textarea. Writing and review share typography and page width.
 - Use the text bar at the bottom for a document instruction, or select text and choose **Revise selection** (**Alt+Enter**). **Enter** submits; **Shift+Enter** adds a line. Standing rules are available from the revision input.
-- Review plays changes sentence by sentence and pauses at linked fidelity concerns. Select a passage to **Accept**, **Reject**, or **Use edited text**. Decisions cover the whole passage, including grouped sentence splits and merges.
+- Review shows an inline diff: red strikethrough for removals and green underline for additions. Fidelity checks run in the background and mark linked concerns as they arrive. Select a passage to **Accept**, **Reject**, or **Use edited text**. Decisions cover the whole passage, including grouped sentence splits and merges. Resolved passages show their resulting text; **Show resolved** reveals their diff and decision controls.
 - **Return to writing** assembles accepted changes and manual replacements; pending or rejected passages retain the original. It runs a fresh fidelity check on that result.
 - **History** previews saved revisions. **Use result** replaces the working draft; **Revisit review** restores its decisions. Copy/download uses committed decisions. JSON export includes the proposal, decisions, feedback, and audit snapshots.
 - Disagree with an audit finding or leave passage feedback. Rule suggestions use this feedback and take effect only when added by the author.
@@ -35,7 +35,7 @@ Draft text, the unsent instruction, and unfinished passage/feedback edits autosa
 
 ## Implementation
 
-React + TypeScript + Vite for the UI; Fastify + Node's SQLite module for persistence. Review renders plain text spans. Selection offsets use UTF-16, with a small adapter for textarea line endings. Documents and composed results are limited to 30,000 characters.
+React + TypeScript + Vite for the UI; Fastify + Node's SQLite module for persistence. Review renders plain text with inline additions and deletions. Selection offsets use UTF-16, with a small adapter for textarea line endings. Documents and composed results are limited to 30,000 characters.
 
 A revision uses one generation call and one background proposal check. Each distinct final result adds another check. Checks receive the original, target, instruction, rules, selection, and edits. Final checks also receive the proposal and author decisions. Passing verdicts use compact ID lists; concerns and instruction clauses get short explanations. Validation requires complete edit/rule coverage. Failed checks remain visibly unavailable and can be retried.
 
@@ -59,7 +59,7 @@ npm test
 npm run build
 ```
 
-Tests use mocked models and temporary databases, covering selection boundaries, passage composition, review playback, manual edits, audit coverage, and persistence. `npm run typecheck` checks types without building.
+Tests use mocked models and temporary databases, covering selection boundaries, passage composition, diff rendering, manual edits, audit coverage, and persistence. `npm run typecheck` checks types without building.
 
 `npm run eval:fidelity` makes real API calls on 14 synthetic cases and writes `data/fidelity-evaluation.json`. It is a quality smoke test, not a calibrated research benchmark.
 

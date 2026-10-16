@@ -5,23 +5,22 @@ import { Icon } from './Icon';
 
 interface Props {
   run: Run; passage: ReviewPassage; index: number; count: number; readOnly: boolean; busy: boolean; finalResult: boolean;
-  breakpoint?: boolean;
   text: string; feedback: string; concerns: Assessment[]; previous: boolean; next: boolean;
   onText: (text: string) => void; onFeedback: (text: string) => void; onSaveFeedback: () => Promise<void>;
-  onDecide: (decision: Decision, text?: string, keyboard?: boolean) => Promise<boolean>; onNavigate: (direction: number) => void; onClose: () => void; onAudit: () => void;
+  onDecide: (decision: Decision, text?: string, keyboard?: boolean) => Promise<void>; onNavigate: (direction: number) => void; onClose: () => void; onAudit: () => void;
 }
-export function PassageInspector({ run, passage, index, count, readOnly, busy, finalResult, breakpoint = false, text, feedback, concerns, previous, next, onText, onFeedback, onSaveFeedback, onDecide, onNavigate, onClose, onAudit }: Props) {
+export function PassageInspector({ run, passage, index, count, readOnly, busy, finalResult, text, feedback, concerns, previous, next, onText, onFeedback, onSaveFeedback, onDecide, onNavigate, onClose, onAudit }: Props) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const state = passageState(run, passage), committed = proposedPassageText(run, passage);
   const edited = text !== passage.after, unapplied = text !== committed;
   const savedFeedback = run.passageReviews?.[passage.id]?.feedback || '';
   return <section className="passage-inspector" aria-label={`Inspect passage ${index + 1}`} onKeyDown={event => {
-    if (event.key === 'Escape' && !breakpoint && !event.nativeEvent.isComposing) { event.stopPropagation(); onClose(); }
+    if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.stopPropagation(); onClose(); }
   }}>
     <div className="passage-heading"><strong>Passage {index + 1} <span className="muted">of {count}</span></strong><div className="passage-navigation">
       <button className="icon-button" aria-label="Previous passage" disabled={!previous} onClick={() => onNavigate(-1)}><Icon name="left" /></button>
       <button className="icon-button" aria-label="Next passage" disabled={!next} onClick={() => onNavigate(1)}><Icon name="right" /></button>
-      <button className="icon-button" aria-label="Close passage inspector" disabled={breakpoint} onClick={onClose}><Icon name="close" /></button>
+      <button className="icon-button" aria-label="Close passage inspector" onClick={onClose}><Icon name="close" /></button>
     </div></div>
     <div className="passage-comparison"><div><span className="field-label">Original</span><div className="passage-original">{passage.before || <span className="muted">No original text — insertion</span>}</div></div>
       <div>{readOnly ? <><span className="field-label">{finalResult ? 'Saved result' : edited ? 'Author replacement' : 'Proposed'}</span><div className="passage-proposed">{text || <span className="muted">Passage deleted</span>}</div></> : <>
