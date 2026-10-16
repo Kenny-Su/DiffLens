@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { createRevision, createDocumentDiff } from './core.js';
 import { selectionError } from '../shared/selection.js';
-import type { EditUpdate, PassageUpdate, RevisionRequest, Run, Rule } from '../shared/types.js';
+import type { PassageUpdate, RevisionRequest, Run, Rule } from '../shared/types.js';
 import { buildPassages } from '../shared/passages.js';
 import { compose } from '../shared/compose.js';
 import { getAudit } from '../shared/fidelity.js';
@@ -51,7 +51,6 @@ export function createApp(db: DatabaseSync, models: Models = modelService, logge
     } } },
   }, async (req, reply) => {
     const { original, instruction, rules, selection } = req.body;
-    if (original.length > 30000) return reply.code(400).send({ message: 'Use a document of at most 30,000 characters.' });
     if (!original.trim() || !instruction.trim()) return reply.code(400).send({ message: 'Enter text and an editing instruction.' });
     if (new Set(rules.map(rule => rule.id)).size !== rules.length) return reply.code(400).send({ message: 'Standing rules must have distinct IDs.' });
     if (selection) {
@@ -69,21 +68,15 @@ export function createApp(db: DatabaseSync, models: Models = modelService, logge
     return findRun(req.params.id) ?? reply.code(404).send({ message: 'Revision not found' });
   });
   app.post<{ Body: { rules?: Rule[] } }>('/api/rules/infer', { schema: { body: { type: 'object', additionalProperties: false, properties: { rules: { type: 'array', maxItems: 50, items: ruleSchema } } } } }, async req => ({ rule: await models.inferRule(recentRuns(), req.body.rules) }));
-  type ReviewUpdate = { edits: EditUpdate[]; passages?: never; restoreFinalReviewId?: never } | { passages: PassageUpdate[]; edits?: never; restoreFinalReviewId?: never } | { restoreFinalReviewId: string; edits?: never; passages?: never };
+  type ReviewUpdate = { passages: PassageUpdate[]; restoreFinalReviewId?: never } | { restoreFinalReviewId: string; passages?: never };
   app.patch<{ Params: { id: string }; Body: ReviewUpdate }>('/api/runs/:id', {
-    schema: { body: { type: 'object', additionalProperties: false, oneOf: [{ required: ['edits'] }, { required: ['passages'] }, { required: ['restoreFinalReviewId'] }], properties: { edits: { type: 'array', items: {
-      type: 'object', additionalProperties: false, required: ['id', 'decision', 'feedback'], properties: { id: { type: 'string' }, decision: { enum: ['pending', 'accepted', 'rejected'] }, feedback: { type: 'string', maxLength: 5000 } },
-    } }, passages: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'decision', 'feedback'], properties: {
+    schema: { body: { type: 'object', additionalProperties: false, oneOf: [{ required: ['passages'] }, { required: ['restoreFinalReviewId'] }], properties: { passages: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id', 'decision', 'feedback'], properties: {
       id: { type: 'string' }, decision: { enum: ['pending', 'accepted', 'rejected'] }, feedback: { type: 'string', maxLength: 5000 }, replacementText: { type: 'string', maxLength: 30000 },
     } } }, restoreFinalReviewId: { type: 'string' } } } },
   }, async (req, reply) => {
     const run = findRun(req.params.id);
     if (!run) return reply.code(404).send({ message: 'Revision not found' });
-    if (req.body.edits) {
-      if (new Set(req.body.edits.map(update => update.id)).size !== req.body.edits.length || req.body.edits.some(update => !run.edits.some(edit => edit.id === update.id))) return reply.code(400).send({ message: 'A selected change no longer exists or was repeated.' });
-      if (req.body.edits.some(update => update.decision !== run.edits.find(edit => edit.id === update.id)?.decision && run.passages?.some(passage => passage.editIds.includes(update.id) && run.passageReviews?.[passage.id]?.replacementText !== undefined))) return reply.code(409).send({ message: 'This passage has a manual replacement. Update the whole passage instead.' });
-      for (const update of req.body.edits) Object.assign(run.edits.find(edit => edit.id === update.id)!, { decision: update.decision, feedback: update.feedback });
-    } else if (req.body.passages) {
+    if (req.body.passages) {
       const updates = req.body.passages;
       if (new Set(updates.map(update => update.id)).size !== updates.length || updates.some(update => !run.passages?.some(passage => passage.id === update.id) || (update.replacementText !== undefined && update.decision !== 'accepted'))) return reply.code(400).send({ message: 'Invalid passage decision or replacement.' });
       for (const update of updates) {
@@ -112,7 +105,7 @@ export function createApp(db: DatabaseSync, models: Models = modelService, logge
     const text = compose(run), diff = createDocumentDiff(run.original, text, run.selection);
     const final = { id: randomUUID(), text, edits: diff.edits.map(edit => ({ ...edit, decision: 'accepted' as const })), segments: diff.segments,
       passages: buildPassages({ ...run, revised: text, ...diff }), passageReviews: structuredClone(run.passageReviews ?? {}),
-      decisions: run.edits.map(({ id, decision, feedback }) => ({ id, decision, feedback })), decisionKey, createdAt: new Date().toISOString(), audit: newAudit(models.model) };
+      decisions: run.edits.map(({ id, decision }) => ({ id, decision })), decisionKey, createdAt: new Date().toISOString(), audit: newAudit(models.model) };
     (run.finalReviews ??= []).push(final);
     saveRun(run); worker.enqueue(run.id, final.audit.id);
     return { run, finalReviewId: final.id };

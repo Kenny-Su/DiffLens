@@ -1,9 +1,8 @@
 export type Decision = 'pending' | 'accepted' | 'rejected';
 export interface Rule { id: string; text: string; enabled: boolean }
 export interface TextSelection { start: number; end: number }
-export interface Edit { id: string; before: string; after: string; start: number; end: number; decision: Decision; feedback: string }
+export interface Edit { id: string; before: string; after: string; start: number; end: number; decision: Decision }
 export interface Segment { text?: string; editId?: string }
-export interface EditUpdate { id: string; decision: Decision; feedback: string }
 export interface ReviewPassage {
   id: string; start: number; end: number; revisedStart: number; revisedEnd: number;
   before: string; after: string; editIds: string[];
@@ -22,7 +21,7 @@ export interface FidelityAudit {
   createdAt: string; completedAt?: string; error?: string; assessments: Assessment[]; feedback: Record<string, AuditFeedback>;
 }
 export interface FinalReview {
-  id: string; text: string; edits: Edit[]; segments: Segment[]; decisions: EditUpdate[]; decisionKey: string; createdAt: string; audit: FidelityAudit;
+  id: string; text: string; edits: Edit[]; segments: Segment[]; decisions: Pick<Edit, 'id' | 'decision'>[]; decisionKey: string; createdAt: string; audit: FidelityAudit;
   passages?: ReviewPassage[]; passageReviews?: Record<string, PassageReview>;
 }
 export interface Run {

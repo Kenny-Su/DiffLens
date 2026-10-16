@@ -41,12 +41,8 @@ export function Sidebar({ workspace: w, mobile, onRevisit }: { workspace: Worksp
     <button className="sidebar-backdrop" aria-label="Dismiss sidebar backdrop" tabIndex={-1} onClick={() => w.setSidebar(null)} />
     <aside ref={ref} className="sidebar" role={mobile ? 'dialog' : 'complementary'} aria-modal={mobile || undefined} aria-labelledby="sidebar-title">
       <div className="sidebar-heading">
-        {w.sidebar === 'rules' && <button className="icon-button" aria-label="Back to document" onClick={() => w.setSidebar(null)}><Icon name="left" /></button>}
-        <h2 id="sidebar-title">{w.sidebar === 'fidelity' ? 'Fidelity details' : w.sidebar === 'history' ? 'Revision history' : w.sidebar === 'rules' ? 'Standing rules' : 'Revision history'}</h2>
-        <div className="sidebar-heading-actions">
-
-          <button className="icon-button" aria-label="Close sidebar" onClick={() => w.setSidebar(null)}><Icon name="close" /></button>
-        </div>
+        <h2 id="sidebar-title">{w.sidebar === 'fidelity' ? 'Fidelity details' : w.sidebar === 'history' ? 'Revision history' : 'Standing rules'}</h2>
+        <button className="icon-button" aria-label="Close sidebar" onClick={() => w.setSidebar(null)}><Icon name="close" /></button>
       </div>
       {mobile && <Messages workspace={w} />}
       <div className="sidebar-content">{w.sidebar === 'rules' ? <StandingRules workspace={w} /> : w.sidebar === 'fidelity' ? <FidelityDetails workspace={w} onRevisit={onRevisit} /> : <>

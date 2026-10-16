@@ -1,7 +1,6 @@
-import type { JSONContent } from '@tiptap/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { compose } from '../shared/compose';
-import type { Decision, EditUpdate, PassageUpdate, Rule, Run, TextSelection, FinalizeResponse } from '../shared/types';
+import type { Decision, PassageUpdate, Rule, Run, TextSelection, FinalizeResponse } from '../shared/types';
 import { passageKey } from '../shared/passages';
 import { newerRun, finalSnapshot, proposalSnapshot } from '../shared/fidelity';
 import { useAuditPolling } from './useAuditPolling';
@@ -57,7 +56,6 @@ export function useWorkspace() {
   }, []);
   const polling = useAuditPolling([run, preview, lastRun, inspectedRun], receive);
 
-
   function persist(next: Draft) {
     draftRef.current = next;
     setDraft(next);
@@ -112,13 +110,13 @@ export function useWorkspace() {
     finally { end(); }
   }
   function continueWithoutReview() {
-    persist({ ...draftRef.current, activeRunId: null, feedback: {} });
+    persist({ ...draftRef.current, activeRunId: null });
     setRestoreFailed(false);
     setError('');
   }
-  function editText(text: string, document?: JSONContent) {
+  function editText(text: string) {
     if (run || preview || operation.current || draft.activeRunId) return;
-    persist({ ...draftRef.current, text, document, documentText: document ? text : undefined });
+    persist({ ...draftRef.current, text });
     setSelection(null);
   }
   function captureSelection(start: number, end: number) {
@@ -126,12 +124,10 @@ export function useWorkspace() {
     const next = end > start ? { start, end } : null;
     setSelection(current => current?.start === next?.start && current?.end === next?.end ? current : next);
   }
-  async function openSidebar(next: 'history') {
-    setSidebar(current => current === next ? null : next);
-    if (next === 'history') {
-      try { receiveHistory(await api<Run[]>('/api/runs')); }
-      catch { setError('Revision history could not be loaded. Close and reopen History to retry.'); }
-    }
+  async function openHistory() {
+    setSidebar(current => current === 'history' ? null : 'history');
+    try { receiveHistory(await api<Run[]>('/api/runs')); }
+    catch { setError('Revision history could not be loaded. Close and reopen History to retry.'); }
   }
   async function generate(target?: TextSelection) {
     if (run || preview || draft.activeRunId || !begin('Revising…')) return;
@@ -144,19 +140,11 @@ export function useWorkspace() {
       setSidebar(null);
       setSelection(null);
       if (result.edits.length) {
-        persist({ ...draftRef.current, activeRunId: result.id, feedback: {} });
+        persist({ ...draftRef.current, activeRunId: result.id });
         setRun(result);
       } else setNotice('No changes suggested.');
     } catch (error) { setError((error as Error).message); }
     finally { end(); }
-  }
-  async function patch(edits: EditUpdate[]) {
-    const result = await api<Run>(`/api/runs/${run!.id}`, { method: 'PATCH', body: JSON.stringify({ edits }) });
-    receive(result);
-    const feedback = { ...draftRef.current.feedback };
-    for (const edit of edits) delete feedback[edit.id];
-    persist({ ...draftRef.current, feedback });
-    return result;
   }
   function guardPassageDrafts() {
     if (!run) return false;
@@ -207,8 +195,7 @@ export function useWorkspace() {
   async function finishReview() {
     if (!run || guardPassageDrafts() || !begin('Saving review…')) return;
     try {
-      const edits = run.edits.filter(edit => draftRef.current.feedback[edit.id] !== undefined && draftRef.current.feedback[edit.id] !== edit.feedback).map(edit => ({ id: edit.id, decision: edit.decision, feedback: draftRef.current.feedback[edit.id] }));
-      let result = edits.length ? await patch(edits) : run;
+      let result = run;
       const sent = draftRef.current;
       for (const passage of result.passages || []) {
         const key = passageKey(run.id, passage.id), feedback = sent.passageFeedback[key];
@@ -264,8 +251,7 @@ export function useWorkspace() {
       const snapshot = saved.finalReviews?.find(item => item.id === finalId);
       const restored = snapshot ? await api<Run>(`/api/runs/${saved.id}`, { method: 'PATCH', body: JSON.stringify({ restoreFinalReviewId: snapshot.id }) }) : await api<Run>(`/api/runs/${saved.id}`);
       receive(restored); setRun(restored); setLastRun(restored);
-      const keepDocument = (draftRef.current.documentText ?? draftRef.current.text) === restored.original;
-      persist({ ...draftRef.current, document: keepDocument ? draftRef.current.document : undefined, documentText: keepDocument ? draftRef.current.documentText ?? draftRef.current.text : undefined, text: compose(restored), activeRunId: restored.id, feedback: {}, lastRevisionId: restored.id, lastFinalReviewId: finalId });
+      persist({ ...draftRef.current, text: compose(restored), activeRunId: restored.id, lastRevisionId: restored.id, lastFinalReviewId: finalId });
       setPreview(null); setPreviewFinalId(null); setPreviewDecisionId(null); setSidebar(null); setRestoreFailed(false);
     } catch (failure) { setError((failure as Error).message); }
     finally { end(); }
@@ -313,7 +299,7 @@ export function useWorkspace() {
     lastRun, lastFinal, lastAudit, earlierSnapshot, lastLoadError, retryLastCheck, auditBusy, retryAudit, saveAuditFeedback, focusEdit,
     auditPollError: polling.error, retryPolling: polling.retry,
     editAuditFeedback: (key: string, text: string) => persist({ ...draftRef.current, auditFeedback: { ...draftRef.current.auditFeedback, [key]: text } }),
-    setError, setNotice, setSidebar, setCandidate, setRules, editText, captureSelection, openSidebar, generate, decide, editPassage, editFeedback, savePassageFeedback, finishReview, proposeRule, newDraft, useResult, restore, continueWithoutReview,
+    setError, setNotice, setSidebar, setCandidate, setRules, editText, captureSelection, openHistory, generate, decide, editPassage, editFeedback, savePassageFeedback, finishReview, proposeRule, newDraft, useResult, restore, continueWithoutReview,
     editInstruction: (instruction: string) => persist({ ...draftRef.current, instruction }),
     retryStorage: () => persist(draftRef.current),
   };

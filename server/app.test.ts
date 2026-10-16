@@ -10,7 +10,7 @@ function setup() {
   const app = createApp(new DatabaseSync(':memory:'), {
     model: 'test-model',
     async audit(run, final) {
-      return { assessments: [
+      return { acceptableEditIds: [], respectedRuleIds: [], notApplicableRuleIds: [], assessments: [
         ...(final?.edits || run.edits).map(edit => ({ kind: 'edit', subjectId: edit.id, text: 'Change', outcome: 'acceptable', reason: 'Requested change.', editIds: [edit.id], proposalEditIds: [], ruleIds: [] })),
         ...run.rules.filter(rule => rule.enabled).map(rule => ({ kind: 'rule', subjectId: rule.id, text: rule.text, outcome: 'respected', reason: 'Preserved.', editIds: [], proposalEditIds: [], ruleIds: [rule.id] })),
         { kind: 'request', subjectId: null, text: run.instruction, outcome: 'fulfilled', reason: 'Requested change made.', editIds: [], proposalEditIds: [], ruleIds: [] },
@@ -21,7 +21,7 @@ function setup() {
       if (instruction === 'Fail') throw new Error('Model unavailable');
       return selection ? 'green pear' : original.replace('red', 'green').replace('blue', 'yellow');
     },
-    async inferRule(runs) { return runs.some(run => run.edits.some(edit => edit.feedback)) ? 'Keep it concise.' : null; },
+    async inferRule(runs) { return runs.some(run => Object.values(run.passageReviews || {}).some(review => review.feedback)) ? 'Keep it concise.' : null; },
   }, false);
   return { app, calls };
 }
@@ -35,15 +35,15 @@ test('one-call generation, bulk decisions, feedback, undo, and result persistenc
   await app.waitForAudits();
   assert.equal(calls.length, 1);
   assert.equal(run.edits.length, 2);
-  const patch = (decision: 'accepted' | 'rejected' | 'pending') => app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { edits: run.edits.map(edit => ({ id: edit.id, decision, feedback: 'Keep it concise.' })) } });
+  const patch = (decision: 'accepted' | 'rejected' | 'pending') => app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { passages: run.passages!.map(passage => ({ id: passage.id, decision, feedback: 'Keep it concise.' })) } });
   assert.equal(compose((await patch('accepted')).json()), run.revised);
   assert.equal(compose((await patch('rejected')).json()), run.original);
   assert.equal(compose((await patch('pending')).json()), run.original);
   const restored: Run = (await app.inject(`/api/runs/${run.id}`)).json();
-  assert.equal(restored.edits[0].feedback, 'Keep it concise.');
+  assert.equal(restored.passageReviews![run.passages![0].id].feedback, 'Keep it concise.');
   assert.equal(restored.edits[0].decision, 'pending');
   assert.deepEqual((await app.inject({ method: 'POST', url: '/api/rules/infer', payload: {} })).json(), { rule: 'Keep it concise.' });
-  const invalid = await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { edits: [{ id: run.edits[0].id, decision: 'accepted', feedback: '' }, { id: 'missing', decision: 'accepted', feedback: '' }] } });
+  const invalid = await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { passages: [{ id: run.passages![0].id, decision: 'accepted', feedback: '' }, { id: 'missing', decision: 'accepted', feedback: '' }] } });
   assert.equal(invalid.statusCode, 400);
   assert.deepEqual((await app.inject(`/api/runs/${run.id}`)).json(), restored);
 });

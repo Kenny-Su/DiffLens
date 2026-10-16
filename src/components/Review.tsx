@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Decision, Run, FidelityAudit, ReviewPassage } from '../../shared/types';
 import { resumeAfterDecision, sentenceConcerns } from '../lib/breakpoints';
 import { needsAttention } from '../../shared/fidelity';
 import { passageKey, passagePending, passageState, proposedPassageText } from '../../shared/passages';
 import { characters, transformationFrame, transformationSteps } from '../lib/transformation';
-import { reviewBlocks } from '../lib/reviewBlocks';
+import { reviewDocument } from '../lib/reviewDocument';
+import { ReviewDocument } from './ReviewDocument';
 import { FidelityStatus } from './Fidelity';
 import { PassageInspector } from './PassageInspector';
 import { Icon } from './Icon';
@@ -73,7 +74,7 @@ export function Review({ run, readOnly, busy, feedback, drafts, onFeedback, onTe
   const frame = step ? transformationFrame(step, phase, progress) : undefined;
   const [showResolved, setShowResolved] = useState(readOnly);
   const [selected, setSelected] = useState<string | null>(null);
-  const [selectedBlock, setSelectedBlock] = useState<number | null>(null);
+  const [selectedPosition, setSelectedPosition] = useState<number | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const resolvedToggle = useRef<HTMLInputElement>(null);
   const finishButton = useRef<HTMLButtonElement>(null);
@@ -82,7 +83,7 @@ export function Review({ run, readOnly, busy, feedback, drafts, onFeedback, onTe
   const concernsFor = (item: ReviewPassage) => audit?.status === 'complete' ? audit.assessments.filter(assessment => needsAttention(assessment) && assessment.editIds.some(id => item.editIds.includes(id))) : [];
   useEffect(() => {
     if (!breakpoint || !step) return;
-    setPlaying(false); setSelected(step.passageId); setSelectedBlock(null);
+    setPlaying(false); setSelected(step.passageId); setSelectedPosition(null);
     requestAnimationFrame(() => {
       const notice = canvas.current?.querySelector<HTMLElement>('.audit-breakpoint');
       notice?.scrollIntoView({ block: 'nearest' }); notice?.focus({ preventScroll: true });
@@ -96,7 +97,7 @@ export function Review({ run, readOnly, busy, feedback, drafts, onFeedback, onTe
     const resumed = resumeAfterDecision(run, id, decision, text);
     setAcknowledged(previous => new Set([...previous, id]));
     setPlaybackRun(resumed.run); setCursor(resumed.cursor); setProgress(0); setPhase('highlight');
-    setSelected(null); setSelectedBlock(null); setPlaying(true); setOriginalView(false);
+    setSelected(null); setSelectedPosition(null); setPlaying(true); setOriginalView(false);
     return true;
   }
   const hasDraft = (item: ReviewPassage) => !readOnly && drafts[passageKey(run.id, item.id)] !== undefined && drafts[passageKey(run.id, item.id)] !== proposedPassageText(run, item);
@@ -109,7 +110,7 @@ export function Review({ run, readOnly, busy, feedback, drafts, onFeedback, onTe
     if (step && frame) text[step.passageId] = frame.text;
     return text;
   }, [originalView, playback, playbackRun, passages, steps, cursor, phase, progress]);
-  const blocks = useMemo(() => reviewBlocks(run, !readOnly, false, overrides), [run, readOnly, overrides]);
+  const content = useMemo(() => reviewDocument(run, !readOnly, overrides), [run, readOnly, overrides]);
   useEffect(() => {
     if (!step) return;
     canvas.current?.querySelector<HTMLElement>(`[data-passage="${step.passageId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
@@ -117,10 +118,9 @@ export function Review({ run, readOnly, busy, feedback, drafts, onFeedback, onTe
   const pending = passages.filter(item => passagePending(run, item));
   const available = passages.filter(marked);
   const activeIndex = available.findIndex(item => item.id === selected);
-  const inspectorBlock = selectedBlock !== null && blocks[selectedBlock]?.some(chunk => chunk.passageId === selected) ? selectedBlock : blocks.findIndex(block => block.some(chunk => chunk.passageId === selected));
-  function select(id: string, block?: number, focus = false) {
+  function select(id: string, position?: number, focus = false) {
     if (breakpoint && id !== step?.passageId) return;
-    setPlaying(false); setSelected(id); setSelectedBlock(block ?? null);
+    setPlaying(false); setSelected(id); setSelectedPosition(position ?? null);
     requestAnimationFrame(() => {
       const inspector = canvas.current?.querySelector<HTMLElement>('.passage-inspector');
       inspector?.scrollIntoView({ block: 'nearest' });
@@ -129,10 +129,9 @@ export function Review({ run, readOnly, busy, feedback, drafts, onFeedback, onTe
   }
   function close() {
     if (breakpoint) return;
-    const anchor = canvas.current?.querySelector<HTMLElement>(`[data-passage="${selected}"]`);
     const remains = passage && (showResolved || passagePending(run, passage) || hasDraft(passage) || concernsFor(passage).length);
-    setSelected(null); setSelectedBlock(null);
-    (remains ? anchor : resolvedToggle.current)?.focus({ preventScroll: true });
+    setSelected(null); setSelectedPosition(null);
+    requestAnimationFrame(() => (remains ? canvas.current?.querySelector<HTMLElement>(`[data-passage="${selected}"]`) : resolvedToggle.current)?.focus({ preventScroll: true }));
   }
   async function bulk(decision: Decision, keyboard: boolean) {
     finishPlayback();
@@ -162,32 +161,15 @@ export function Review({ run, readOnly, busy, feedback, drafts, onFeedback, onTe
     </div><button className="text-button" onClick={onExport}><Icon name="download" />Export revision JSON</button></div>
     {waitingForAudit && <div className="audit-playback-notice" role="status">Checking fidelity before playback. Flagged sentences will pause for your review.</div>}
     {auditUnavailable && <div className="audit-playback-notice" role="status">The fidelity audit is unavailable. <button onClick={onAudit}>View audit and retry</button><button onClick={() => setSkipUnavailableAudit(true)}>Continue without audit</button></div>}
-    <div className="document-scroll" ref={canvas}><div className="review-document">
+    <div className="document-scroll" ref={canvas}><div className="review-document document-page">
       <div className="document-label">{readOnly ? finalResult ? 'Saved result' : 'Saved review' : originalView ? 'Original text' : playback ? 'Replaying changes · proposals are not applied' : 'Proposed result · unresolved proposals shown'}{run.selection && ' · Selected passage'}</div>
-      {blocks.map((block, blockIndex) => <Fragment key={blockIndex}><div className="document-passage" aria-label={`Document paragraph ${blockIndex + 1}`}>
-        {block.map((chunk, index) => {
-          const item = passages.find(item => item.id === chunk.passageId);
-          if (!item || !marked(item) && step?.passageId !== item.id) return <Fragment key={index}>{chunk.text}</Fragment>;
-          const number = passages.indexOf(item) + 1, concerns = concernsFor(item), state = passageState(run, item);
-          // Native buttons form atomic boxes, so they cannot flow across sentence line breaks.
-          return <span key={index} role="button" tabIndex={0} data-passage={item.id} className={`review-passage ${selected === item.id ? 'selected' : ''} ${concerns.length ? 'has-concern' : ''}`} aria-label={`Inspect passage ${number}. ${state === 'mixed' ? 'Partially reviewed' : state}${concerns.length ? '. Fidelity concern' : ''}${hasDraft(item) ? '. Unapplied manual edit' : ''}`} aria-expanded={selected === item.id} onClick={event => select(item.id, blockIndex, event.detail === 0)} onKeyDown={event => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              if (!event.repeat) select(item.id, blockIndex, true);
-            }
-          }}>
-            {!!concerns.length && <span className="audit-marker" aria-hidden="true">!</span>}{step?.passageId === item.id && chunk.text ? (() => {
-              const chunkOffset = block.slice(0, index).filter(piece => piece.passageId === item.id).reduce((sum, piece) => sum + piece.text.length, 0)
-                + blocks.slice(0, blockIndex).flat().filter(piece => piece.passageId === item.id).reduce((sum, piece) => sum + piece.text.length, 0);
-              if (!frame) return chunk.text;
-              const start = Math.max(0, frame.start - chunkOffset), end = Math.min(chunk.text.length, frame.end - chunkOffset);
-              const caret = Math.max(start, Math.min(end, frame.caret - chunkOffset));
-              const hasCaret = phase !== 'highlight' && frame.caret >= chunkOffset && frame.caret <= chunkOffset + chunk.text.length;
-              return end >= start && frame.end >= chunkOffset && frame.start < chunkOffset + chunk.text.length ? <>{chunk.text.slice(0, start)}<span className="transformation-sentence">{hasCaret ? <>{chunk.text.slice(start, caret)}<span className="transformation-caret" aria-hidden="true" />{chunk.text.slice(caret, end)}</> : chunk.text.slice(start, end)}</span>{chunk.text.slice(end)}</> : chunk.text;
-            })() : chunk.text || <span className="deleted-passage">{originalView ? 'New passage' : 'Deleted passage'}</span>}{hasDraft(item) && <span className="passage-draft-marker" aria-hidden="true"> · edited</span>}
-          </span>;
-        })}
-      </div>{passage && blockIndex === inspectorBlock && <>
+      <ReviewDocument content={content} originalView={originalView} selected={selected} selectedPosition={selectedPosition} onSelect={select}
+        passages={passages.filter(item => marked(item) || step?.passageId === item.id).map(item => ({
+          id: item.id, selected: selected === item.id, concern: !!concernsFor(item).length, draft: hasDraft(item),
+          label: `Inspect passage ${passages.indexOf(item) + 1}. ${passageState(run, item) === 'mixed' ? 'Partially reviewed' : passageState(run, item)}${concernsFor(item).length ? '. Fidelity concern' : ''}${hasDraft(item) ? '. Unapplied manual edit' : ''}`,
+        }))}
+        animation={!originalView && step && frame ? { id: step.passageId, start: frame.start, end: frame.end, ...(phase !== 'highlight' ? { caret: frame.caret } : {}) } : undefined}>
+        {passage && <>
         {breakpoint && passage.id === step?.passageId && <section className="audit-breakpoint" role="region" aria-label="Fidelity breakpoint" tabIndex={-1}>
           <strong>Fidelity breakpoint · before this sentence changes</strong>
           {[...new Set(stepConcerns.map(item => item.reason))].map(reason => <p key={reason}>{reason}</p>)}
@@ -204,7 +186,8 @@ export function Review({ run, readOnly, busy, feedback, drafts, onFeedback, onTe
           const saved = await decidePassage(passage.id, decision, text);
           if (keyboard) requestAnimationFrame(() => canvas.current?.querySelector<HTMLTextAreaElement>('#passage-replacement')?.focus({ preventScroll: true }));
           return saved;
-        }} onNavigate={direction => select(available[activeIndex + direction].id, undefined, true)} onClose={close} onAudit={onAudit} /></>}</Fragment>)}
+        }} onNavigate={direction => select(available[activeIndex + direction].id, undefined, true)} onClose={close} onAudit={onAudit} /></>}
+      </ReviewDocument>
       {!passages.length && <p className="review-hint">{finalResult ? 'This saved result retains the original text.' : 'No changes were suggested.'}</p>}
       {!pending.length && !readOnly && <p className="review-hint">All passages reviewed. Returning to writing checks your assembled result, including manual changes.</p>}
     </div></div>

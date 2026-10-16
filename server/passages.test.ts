@@ -11,7 +11,7 @@ import { emptyDraft, readDraft, writeDraft } from '../src/lib/draft.js';
 import { acknowledgeDrafts, unappliedPassage, updatePassageDraft } from '../src/lib/reviewDrafts.js';
 import { resumeAfterDecision, sentenceConcerns } from '../src/lib/breakpoints.js';
 import { characters, transformationFrame, transformationSteps } from '../src/lib/transformation.js';
-import { reviewBlocks } from '../src/lib/reviewBlocks.js';
+import { reviewDocument } from '../src/lib/reviewDocument.js';
 import type { Run, FinalReview } from '../shared/types.js';
 
 const examples = [
@@ -36,7 +36,7 @@ test('passages group related words, respect common sentence boundaries, and reco
     const passages = run.passages!;
     if (count !== undefined) assert.equal(passages.length, count, `${before} -> ${after}`);
     assert.deepEqual(passages.flatMap(passage => passage.editIds), run.edits.map(edit => edit.id));
-    assert.equal(reviewBlocks(run).flat().map(chunk => chunk.text).join(''), after);
+    assert.equal(reviewDocument(run).blocks.flat().map(chunk => chunk.text).join(''), after);
     assert.equal(compose(run), before);
     let end = 0;
     for (const passage of passages) {
@@ -63,7 +63,7 @@ test('bounded manual replacements retain selection edges and exact surrounding U
   assert.equal(compose(run), original.slice(0, passage.start) + 'A custom 🧬 sentence.\n\nNew paragraph. ' + outside);
   run.passageReviews[passage.id].replacementText = '';
   assert.equal(compose(run), original.slice(0, passage.start) + outside);
-  assert.ok(reviewBlocks(run).flat().some(chunk => chunk.passageId === passage.id && chunk.text === ''));
+  assert.ok(reviewDocument(run).blocks.flat().some(chunk => chunk.passageId === passage.id && chunk.text === ''));
 });
 
 test('legacy mixed decisions compose unchanged and stay partially reviewed', () => {
@@ -95,7 +95,7 @@ function setup(revised = 'A green apple and a yellow pear. Second changed senten
     model: 'mock', revise: async () => revised, inferRule: async () => null,
     audit: async (run, final) => {
       inputs.push(auditInput(run, final));
-      return { assessments: [
+      return { acceptableEditIds: [], respectedRuleIds: [], notApplicableRuleIds: [], assessments: [
         ...(final?.edits ?? run.edits).map(edit => ({ kind: 'edit', subjectId: edit.id, text: 'Change', outcome: 'acceptable', reason: 'Fixture assessment.', editIds: [edit.id], proposalEditIds: [], ruleIds: [] })),
         { kind: 'request', subjectId: null, text: 'Request', outcome: 'fulfilled', reason: 'Fixture assessment.', editIds: [], proposalEditIds: [], ruleIds: [] },
       ] };
@@ -105,7 +105,7 @@ function setup(revised = 'A green apple and a yellow pear. Second changed senten
   return { app, inputs, generate };
 }
 
-test('passage updates are atomic, preserve the proposal, and protect manual replacements from legacy decisions', async t => {
+test('passage updates are atomic, preserve the proposal, and reject the removed edit-by-edit API', async t => {
   const { app, generate } = setup(); t.after(() => app.close());
   const run = await generate(), passage = run.passages![0]; await app.waitForAudits();
   const patch = (payload: Record<string, unknown>) => app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload });
@@ -117,7 +117,7 @@ test('passage updates are atomic, preserve the proposal, and protect manual repl
   assert.equal(accepted.revised, run.revised);
   assert.deepEqual(accepted.passages, run.passages);
   assert.equal(compose(accepted), 'A custom result. Second sentence.');
-  assert.equal((await patch({ edits: [{ id: passage.editIds[0], decision: 'rejected', feedback: '' }] })).statusCode, 409);
+  assert.equal((await patch({ edits: [{ id: passage.editIds[0], decision: 'rejected', feedback: '' }] })).statusCode, 400);
   const feedback = await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}/passages/${passage.id}/feedback`, payload: { feedback: 'Still editable.' } });
   assert.equal(compose(feedback.json()), compose(accepted));
   const rejected = (await patch({ passages: [{ id: passage.id, decision: 'rejected', feedback: '' }] })).json<Run>();
@@ -153,7 +153,7 @@ test('manual finalizations are idempotent, inspectable, restorable, and audited 
   assert.equal(final.passageReviews?.[passage.id].replacementText, 'The intervention may help.');
   const finalInput = inputs.find(input => input.targetText === final.text)!;
   assert.equal(finalInput.authorPassages[0].replacementText, 'The intervention may help.');
-  assert.equal(finalInput.proposal.text, run.revised);
+  assert.equal(finalInput.proposal!.text, run.revised);
   const restored = (await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { restoreFinalReviewId: final.id } })).json<Run>();
   assert.equal(compose(restored), final.text);
   assert.equal(restored.finalReviews!.length, 2);
@@ -169,7 +169,7 @@ test('backfill preserves legacy IDs, decisions and old snapshots', async t => {
   delete legacy.passages; delete legacy.passageReviews;
   legacy.edits[0].decision = 'accepted'; legacy.edits[1].decision = 'rejected';
   const text = compose(legacy), target = createRevision(legacy.original, text, '', []);
-  const final: FinalReview = { id: 'f1', text, edits: target.edits.map(edit => ({ ...edit, decision: 'accepted' })), segments: target.segments, decisions: legacy.edits.map(({ id, decision, feedback }) => ({ id, decision, feedback })), decisionKey: 'old', createdAt: '', audit: { ...newAudit('mock'), status: 'failed' } };
+  const final: FinalReview = { id: 'f1', text, edits: target.edits.map(edit => ({ ...edit, decision: 'accepted' })), segments: target.segments, decisions: legacy.edits.map(({ id, decision }) => ({ id, decision })), decisionKey: 'old', createdAt: '', audit: { ...newAudit('mock'), status: 'failed' } };
   legacy.finalReviews = [final];
   db.prepare('INSERT INTO runs VALUES (?, ?)').run(legacy.id, JSON.stringify(legacy));
   const app = createApp(db, { model: 'mock', revise: async () => '', audit: async () => ({}), inferRule: async () => null }, false); t.after(() => app.close());
@@ -194,7 +194,7 @@ test('alignment anchors never lose repeated text, zero-width edits, or paragraph
     run.edits.forEach(edit => edit.decision = 'accepted');
     run.passageReviews = Object.fromEntries(run.passages!.map(passage => [passage.id, { replacementText: passage.after, feedback: '' }]));
     assert.equal(compose(run), revised, `case ${attempt}`);
-    assert.equal(reviewBlocks(run).flat().map(chunk => chunk.text).join(''), revised, `render case ${attempt}`);
+    assert.equal(reviewDocument(run).blocks.flat().map(chunk => chunk.text).join(''), revised, `render case ${attempt}`);
   }
 });
 
@@ -205,7 +205,7 @@ test('an audit completing after a manual replacement preserves the applied text 
     model: 'mock', revise: async () => 'The intervention reduces error.', inferRule: async () => null,
     audit: async run => {
       await held;
-      return { assessments: [
+      return { acceptableEditIds: [], respectedRuleIds: [], notApplicableRuleIds: [], assessments: [
         ...run.edits.map(edit => ({ kind: 'edit', subjectId: edit.id, text: 'Claim strength', outcome: 'unacceptable', reason: 'Hedge removed.', editIds: [edit.id], proposalEditIds: [], ruleIds: [] })),
         { kind: 'request', subjectId: null, text: 'Polish', outcome: 'partial', reason: 'Strengthening was not requested.', editIds: [], proposalEditIds: [], ruleIds: [] },
       ] };
@@ -224,22 +224,6 @@ test('an audit completing after a manual replacement preserves the applied text 
 });
 
 
-test('word review preserves both text versions across paragraph boundaries and pure insertions/deletions', () => {
-  for (const [before, after] of examples) {
-    const run = createRevision(before, after, 'Revise.', []);
-    const chunks = reviewBlocks(run, true, true).flat();
-    const parts = chunks.flatMap(chunk => chunk.parts ?? [{ text: chunk.text }]);
-    assert.equal(parts.filter(part => !('added' in part && part.added)).map(part => part.text).join(''), before);
-    assert.equal(parts.filter(part => !('removed' in part && part.removed)).map(part => part.text).join(''), after);
-    assert.ok(chunks.filter(chunk => chunk.parts).every(chunk => chunk.passageId));
-    run.edits.forEach(edit => edit.decision = 'accepted');
-    assert.equal(reviewBlocks(run, true, () => false).flat().map(chunk => chunk.text).join(''), after);
-    run.edits.forEach(edit => edit.decision = 'rejected');
-    assert.equal(reviewBlocks(run, true, true).flat().map(chunk => chunk.text).join(''), before);
-  }
-});
-
-
 test('transformation events reconstruct exact targets without changing review decisions', () => {
   for (const [before, after] of examples) {
     const run = createRevision(before, after, 'Revise.', []);
@@ -250,7 +234,7 @@ test('transformation events reconstruct exact targets without changing review de
       assert.equal(step.before.slice(step.start, step.start + step.removed.length), step.removed);
       text[step.passageId] = step.after;
     }
-    assert.equal(reviewBlocks(run, true, false, text).flat().map(chunk => chunk.text).join(''), after);
+    assert.equal(reviewDocument(run, true, text).blocks.flat().map(chunk => chunk.text).join(''), after);
     assert.deepEqual(run.edits.map(edit => edit.decision), decisions);
     run.edits.forEach(edit => edit.decision = 'rejected');
     assert.equal(transformationSteps(run).length, 0);

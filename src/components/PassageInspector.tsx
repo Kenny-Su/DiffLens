@@ -15,7 +15,6 @@ export function PassageInspector({ run, passage, index, count, readOnly, busy, f
   const state = passageState(run, passage), committed = proposedPassageText(run, passage);
   const edited = text !== passage.after, unapplied = text !== committed;
   const savedFeedback = run.passageReviews?.[passage.id]?.feedback || '';
-  const legacyNotes = run.edits.filter(edit => passage.editIds.includes(edit.id) && edit.feedback.trim());
   return <section className="passage-inspector" aria-label={`Inspect passage ${index + 1}`} onKeyDown={event => {
     if (event.key === 'Escape' && !breakpoint && !event.nativeEvent.isComposing) { event.stopPropagation(); onClose(); }
   }}>
@@ -48,6 +47,5 @@ export function PassageInspector({ run, passage, index, count, readOnly, busy, f
         if (keyboard) requestAnimationFrame(() => field?.focus());
       }}>Save feedback</button></div>}
     </>}
-    {!!legacyNotes.length && <details className="passage-legacy"><summary>Earlier edit feedback</summary>{legacyNotes.map(edit => <p key={edit.id}>{edit.feedback}</p>)}</details>}
   </section>;
 }

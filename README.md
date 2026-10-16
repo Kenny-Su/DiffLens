@@ -1,89 +1,66 @@
 # DiffLens
 
-A document editor with basic rich-text drafting that generates revisions, lets you accept, reject, or manually rewrite proposed passages, and checks fidelity to your original instruction. Both model proposals and the author's assembled result are assessed: accepting a problematic change or rejecting a requested change can leave a concern. Built with React, TypeScript, Vite, Fastify, and SQLite (Node's built-in SQLite module).
+A local research prototype for reviewing AI revisions to plain text. Write, request a revision, inspect fidelity concerns, and accept, reject, or rewrite proposed passages.
 
 ## Run
 
-Requires Node.js 24.21 or newer within the Node 24 LTS line. `.nvmrc` and `.node-version` select Node 24. Keep `@types/node` on major 24.
+Use Node 24.21+ within the Node 24 line (`.nvmrc`). Copy `.env.example` to `.env` and set `OPENAI_API_KEY` and `OPENAI_MODEL`. `OPENAI_BASE_URL` is optional; the provider must support the Responses API and structured output.
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. Vite proxies API calls to Fastify on port 3001.
+Open http://127.0.0.1:5173. Vite proxies `/api` to Fastify on port 3001.
 
-The server reads `OPENAI_API_KEY`, `OPENAI_MODEL`, and optional `OPENAI_BASE_URL` from this project’s `.env`. Existing environment variables take precedence. Keys remain on the server. Revision generation, separate fidelity assessments, and rule inference use the configured Responses API. Assessments and rule inference require structured-output support.
+For a compiled build:
 
 ```sh
 npm run build
 npm start
 ```
 
-The build clears previous output, type-checks the browser and tooling, compiles the Node server into `dist-server/`, and bundles the frontend into `dist/`. Type checks also reject unused locals and parameters. `npm run clean` removes both build directories. `npm start` runs the compiled server with Node, without requiring development dependencies. After a build, Fastify serves the app at http://127.0.0.1:3001.
-
-For deployment, build with development dependencies installed, then install runtime dependencies with `npm ci --omit=dev`. Keep both build directories and run from the project root.
+Open http://127.0.0.1:3001. The build type-checks the project and replaces `dist/` and `dist-server/`. `npm run clean` removes those outputs.
 
 ## Workflow
 
-1. Write or paste content into the Tiptap document workspace. The official MIT-licensed Tiptap Simple Editor template supplies its toolbar, typography, responsive menus, formatting, lists, links, alignment, and undo/redo. Its native Placeholder extension handles empty paragraphs. DiffLens adds only draft persistence and revision integration. Image files are stored locally in the draft rather than sent to an upload service; the template’s demo uploader is replaced. The template’s global theme toggle is omitted because DiffLens does not yet have an application-wide dark theme. The working document, including its formatting, and unsent revision instruction autosave in this browser.
-2. To revise a passage, select it and click **Revise selection** beside the text (or press **Alt+Enter**). Enter an instruction in the floating box and press **Send**. To revise the whole document, hover over **Revise** in the bottom-right corner to expand the floating instruction input, or click it on touch devices and with a keyboard. The input stays open while you type; Escape or clicking outside closes it. Standing rules are available through its settings icon. Both instruction boxes autosave the same unsent instruction. Successful submission clears it; failed requests preserve it for retry. Using or reopening a saved revision does not repopulate the input with its historical instruction. Opening either input does not change the draft.
-3. Generate suggestions. The review highlights each changed sentence, then deletes and inserts characters within it before moving to the next sentence and settling on the proposal. Related sentence splits and merges play as a group. The default playback speed is 1×, with a pause before each sentence and readable character timing; Unicode graphemes such as emoji remain intact. Pause, change playback speed, finish the animation, replay the document or a selected passage, or switch between original and proposed text. Reduced-motion users skip character animation while retaining audit breakpoints. Playback waits for the proposal audit and pauses before an unresolved sentence with a linked fidelity concern. The breakpoint shows its reason and the passage controls. Accepting, rejecting, or applying edited text saves the passage decision before playback continues; a failed save keeps it paused. Rejections retain the original, and manual replacements are used in subsequent playback. Decisions apply to the whole passage, including grouped splits and merges. Finish animation stops at the next unresolved concern. Failed audits offer retry or explicit continuation without an audit. Playback itself does not apply decisions. Select a passage to open its original text and an editable proposal beneath the paragraph. **Accept** applies the proposal, **Reject** keeps the original, and typing changes the apply action to **Use edited text**. Changes are presented through transformation playback rather than a static diff. The rest of the document stays read-only during review.
-4. Review while **Proposal fidelity** runs in the background. Amber markers identify passages linked to findings; selecting one shows the explanation. Findings concern the original model proposal, not a manual rewrite. **Accept remaining** includes flagged passages. **Show resolved** exposes completed decisions and undo; flagged resolved passages remain selectable. Undoing a manual replacement restores it as an unapplied draft.
-5. Manual typing autosaves locally without applying the decision. Close the inspector, navigate, or reload without losing it. **Reset to proposal** restores the model wording. Returning to writing or using a bulk action opens the first unapplied edit for resolution. Once resolved, **Return to writing** saves accepted passages and manual replacements; untouched pending and rejected changes retain the original wording. It checks that result against the original instruction and rules while you continue writing. This includes mistakes introduced by manual rewriting, requests left unmet by over-rejection, and problems from combining decisions. The footer links to the check. If you edit the draft, the status says **Earlier revision** and opens the saved snapshot, never annotating or replacing newer writing. **Revisit review** restores saved decisions, with confirmation before replacing a different draft.
-6. Open **History** to preview a saved revision without replacing the draft. **Use result** explicitly replaces the working draft. Both replacement and starting a new draft protect existing writing with a confirmation.
-7. During review, **Copy reviewed text** and **Download reviewed text** use committed decisions, not pending proposals or unapplied typing. JSON exports include passage boundaries, the immutable model proposal, applied author replacements, rule snapshots, assessments, successive results, decisions, and feedback.
-8. Disagree with any mistaken assessment, optionally explain why, or undo the disagreement. The original model judgment remains visible. Rule suggestions are user-triggered and use recurring evidence from passage/edit feedback and audit disagreements, with distinct provenance and current rules. Manual replacements provide context but are not treated as expressed preferences by themselves. Suggestions take effect only after you add them.
+- Write in the native textarea. There is no formatting toolbar, Markdown/LaTeX renderer, or rich-text document model. Writing and review share typography and page width.
+- Click **Revise** for a document instruction, or select text and choose **Revise selection** (**Alt+Enter**). **Enter** submits; **Shift+Enter** adds a line. Standing rules are available from the revision input.
+- Review plays changes sentence by sentence and pauses at linked fidelity concerns. Select a passage to **Accept**, **Reject**, or **Use edited text**. Decisions cover the whole passage, including grouped sentence splits and merges.
+- **Return to writing** assembles accepted changes and manual replacements; pending or rejected passages retain the original. It runs a fresh fidelity check on that result.
+- **History** previews saved revisions. **Use result** replaces the working draft; **Revisit review** restores its decisions. Copy/download uses committed decisions. JSON export includes the proposal, decisions, feedback, and audit snapshots.
+- Disagree with an audit finding or leave passage feedback. Rule suggestions use this feedback and take effect only when added by the author.
 
-There is one working draft per browser, stored under `difflens-draft-v1` in local storage, including the instruction, active review ID, latest revision/result references, unfinished passage/edit/audit feedback, and unapplied manual text keyed by run and passage. Reloading restores the review and relevant background checks independently. If storage, review restoration, or auditing fails, the interface preserves the draft and offers recovery actions. Failed audits can be retried without regenerating text.
+Draft text, the unsent instruction, and unfinished passage/feedback edits autosave in browser local storage. Only current plain-text draft fields are retained. Rules are stored separately and start with four editable scientific defaults. Revisions and audits are stored in `data/difflens.sqlite`; history lists the latest 20. Existing saved records remain readable.
 
-Standing rules are stored separately under `difflens-rules`. New collections receive four editable scientific defaults covering claim strength and attribution, numbers and units, citations and their associations, and material conditions and limitations. Each permits changes explicitly requested by the author. Existing collections, including intentionally empty ones, stay unchanged.
+## Implementation
 
-Revisions and decisions persist in `data/difflens.sqlite`. The history panel shows the latest 20 revisions; an active review can be retrieved by ID even if it is older. Rich-text drafting is stored locally; revision history and audits currently retain plain-text snapshots, with no named-document library.
+React + TypeScript + Vite for the UI; Fastify + Node's SQLite module for persistence. Review renders plain text spans. Selection offsets use UTF-16, with a small adapter for textarea line endings. Documents and composed results are limited to 30,000 characters.
 
-## Revision API
+A revision uses one generation call and one background proposal check. Each distinct final result adds another check. Checks receive the original, target, instruction, rules, selection, and edits. Final checks also receive the proposal and author decisions. Passing verdicts use compact ID lists; concerns and instruction clauses get short explanations. Validation requires complete edit/rule coverage. Failed checks remain visibly unavailable and can be retried.
 
-`POST /api/runs` accepts `original`, `instruction`, `rules`, and an optional `selection: { start, end }`. Selection offsets use JavaScript UTF-16 code units and must describe a nonempty range of complete characters containing non-whitespace text. The full document provides model context; only the selected passage is replaced. Unselected text and whitespace at the selection boundaries are preserved exactly. Both saved text snapshots represent the complete document.
+One background worker processes audits and resumes unfinished checks after restart. Run versions prevent stale polling responses from overwriting decisions. These checks evaluate fidelity, not external factual truth.
 
-`GET /api/runs` returns recent revisions, and `GET /api/runs/:id` restores one revision. Runs store immutable `passages` with source/target ranges and member word-edit IDs, plus separate `passageReviews` for manual replacements and feedback. Sentence/paragraph boundaries are aligned through unchanged spans, with conservative merging for splits, merges, and abbreviations. Unchanged boundary whitespace remains outside editable passages. Selection boundaries are hard limits. Groups are persisted once; existing revisions receive additive metadata without changing saved decisions or audit IDs.
-
-`PATCH /api/runs/:id` accepts exactly one of:
-
-- `{ passages: [{ id, decision, feedback, replacementText? }] }`: apply whole-passage decisions atomically. Replacement text is allowed only with `accepted`; an empty string deletes the passage. Omitting it uses the model proposal. Reject/undo clear the applied replacement.
-- `{ edits: [{ id, decision, feedback }] }`: legacy fine-grained updates. They cannot change decisions beneath a manual replacement; feedback-only updates remain allowed.
-- `{ restoreFinalReviewId }`: restore a saved decision/manual-replacement snapshot.
-
-`PATCH /api/runs/:id/passages/:passageId/feedback` accepts `{ feedback }` without changing decisions or manual text. Invalid IDs, duplicate IDs, mixed update formats, or oversized assembled results reject the entire update. Documents, generated proposals, and composed results are limited to 30,000 characters; there is no sentence-count limit. Legacy mixed decisions remain partially reviewed until the author chooses a whole-passage decision.
-
-Generation persists and returns the proposal with its audit pending. A single background worker processes queued audits. Pending/running status is durable in SQLite, recovered after restart, and deduplicated. Completion reloads the latest run before saving its audit; monotonically increasing run versions also prevent older polling responses from overwriting decisions or newer attempts in the browser.
-
-- `POST /api/runs/:id/finalize` composes accepted changes, snapshots decisions, and queues a separate final check. Returns `{ run, finalReviewId }`. Identical decisions and applied manual text reuse their existing snapshot; different manual replacements or reconsidered decisions preserve successive results.
-- `POST /api/runs/:id/audits/:auditId/retry` retries a failed check, without another revision request.
-- `PATCH /api/runs/:id/audits/:auditId/feedback` accepts `{ assessmentId, disagreed, text }`. It retains model assessments and separate author feedback.
-- `POST /api/rules/infer` accepts `{ rules }` for the current rule collection. It proposes one rule or returns `null` when no recurring preference is supported.
-
-Each assessment receives the full original, target snapshot, instruction, selection boundaries, enabled rules, and diff. Final checks also receive proposal edits, saved decisions, and author replacements as distinct contributions. Each final result gets a fresh exact diff against the original. Structured output is validated for complete edit/rule coverage, instruction assessments, valid outcomes, and all referenced IDs. Refused, incomplete, malformed, or failed responses produce **Check unavailable**, never a clean result. Conflicts and uncertainty are explicit; fidelity checks do not perform external factual verification.
+| API | Purpose |
+| --- | --- |
+| `POST /api/runs` | Generate from `original`, `instruction`, `rules`, and optional `selection` |
+| `GET /api/runs`, `GET /api/runs/:id` | List or load saved revisions |
+| `PATCH /api/runs/:id` | Apply `passages: [{ id, decision, feedback, replacementText? }]` or `restoreFinalReviewId` |
+| `POST /api/runs/:id/finalize` | Save the composed result and queue its check |
+| `PATCH /api/runs/:id/passages/:passageId/feedback` | Save passage feedback |
+| `POST /api/runs/:id/audits/:auditId/retry` | Retry a failed check |
+| `PATCH /api/runs/:id/audits/:auditId/feedback` | Save an assessment disagreement |
+| `POST /api/rules/infer` | Suggest a rule from feedback and current `rules` |
 
 ## Checks
 
 ```sh
 npm test
-npm run typecheck
 npm run build
 ```
 
-Deterministic tests use mocked model responses and temporary databases for asynchronous completion, retries, restart recovery, finalization, disagreements, passage grouping, manual replacements, selection safety, local draft guards, and persistence. Randomized alignment cases check exact reconstruction; browser checks use an isolated mocked server. The scientific quality smoke evaluation is separate and makes real API calls using synthetic documents only:
+Tests use mocked models and temporary databases, covering selection boundaries, passage composition, review playback, manual edits, audit coverage, and persistence. `npm run typecheck` checks types without building.
 
-```sh
-npm run eval:fidelity
-```
+`npm run eval:fidelity` makes real API calls on 14 synthetic cases and writes `data/fidelity-evaluation.json`. It is a quality smoke test, not a calibrated research benchmark.
 
-It evaluates 14 labeled examples, including hedge removal, number/citation/condition changes, explicit prohibitions, authorized meaning changes, ignored instructions, conflicting rules, over-rejection, mixed decisions, manual claim strengthening, and manual corrections. The report at `data/fidelity-evaluation.json` records model/prompt versions, complete assessments, and revision-level concern detection. This small set is a smoke test, not a calibrated research benchmark.
-
-## Prototype scope
-
-This is a local, single-user prototype. The writing editor uses the official Tiptap Simple Editor template and its extension configuration. Existing plain-text drafts migrate into paragraphs without interpreting LaTeX commands. Revisions operate on a UTF-16 plain-text projection; compatible text changes are mapped back onto the working document to retain existing formatting. Unsupported structural replacements can rebuild paragraphs. Formatting/structure fidelity auditing and Markdown import/export are not implemented yet. It does not implement authentication, participant-study instrumentation, or edit boundary adjustment. Do not expose the local server publicly. Rule inference uses feedback from the 20 most recent revisions. A revision uses one generation call and one separate proposal assessment; each new final result adds its own assessment. Prompt text, document snapshots, enabled rules, and relevant decisions/feedback are sent to the configured API provider with `store: false`.
-
-Existing revisions without audit metadata remain readable and display **Not checked**. Existing draft data is read with defaults for new optional references; no local-data reset is required.
-
-API calls use explicit developer instructions and a separate user data message. Rule proposals and fidelity assessments use strict JSON Schema through Responses `text.format`; revision generation returns plain text. Refused, incomplete, or empty generation responses are rejected before saving a revision. Audit failures preserve the generated text and all author decisions.
+The app is single-user and local, without authentication or participant-study instrumentation. Model requests send document snapshots, instructions, rules, and relevant feedback to the configured provider with `store: false`. Keys stay on the server.

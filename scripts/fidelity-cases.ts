@@ -30,7 +30,7 @@ export function caseRun(item: Case) {
     run.edits.forEach(edit => { edit.decision = item.decide?.(edit.before) ?? 'accepted'; });
     if (item.manual !== undefined) run.passageReviews = { [run.passages![0].id]: { replacementText: item.manual, feedback: '' } };
     const text = compose(run), diff = createRevision(run.original, text, run.instruction, run.rules);
-    final = { id: item.id, text, edits: diff.edits, segments: diff.segments, passages: diff.passages, passageReviews: structuredClone(run.passageReviews ?? {}), decisions: run.edits.map(({ id, decision, feedback }) => ({ id, decision, feedback })), decisionKey: item.id, createdAt: new Date().toISOString(), audit: newAudit() };
+    final = { id: item.id, text, edits: diff.edits, segments: diff.segments, passages: diff.passages, passageReviews: structuredClone(run.passageReviews ?? {}), decisions: run.edits.map(({ id, decision }) => ({ id, decision })), decisionKey: item.id, createdAt: new Date().toISOString(), audit: newAudit() };
   }
   return { run, final };
 }

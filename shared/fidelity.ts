@@ -1,5 +1,5 @@
 import type { Assessment, FidelityAudit, FinalReview, Rule, Run } from './types.js';
-export const AUDIT_PROMPT_VERSION = 'fidelity-2';
+export const AUDIT_PROMPT_VERSION = 'fidelity-3-compact';
 export const defaultRules: Rule[] = [
   { id: 'scientific-claims', text: 'Preserve claim strength, uncertainty, attribution, and causal or comparative scope unless explicitly instructed to change them.', enabled: true },
   { id: 'scientific-numbers', text: 'Preserve numerical values, units, ranges, and statistical qualifiers unless explicitly instructed to change them.', enabled: true },

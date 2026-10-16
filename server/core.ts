@@ -37,7 +37,7 @@ export function createDocumentDiff(original: string, revised: string, selection?
       offset += change.value.length;
       continue;
     }
-    pending ??= { id: `e${edits.length + 1}`, before: '', after: '', start: offset, end: offset, decision: 'pending', feedback: '' };
+    pending ??= { id: `e${edits.length + 1}`, before: '', after: '', start: offset, end: offset, decision: 'pending' };
     if (change.removed) {
       pending.before += change.value;
       offset += change.value.length;

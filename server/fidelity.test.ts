@@ -13,7 +13,7 @@ import type { FinalReview, FinalizeResponse, Run } from '../shared/types.js';
 import type { Auditor } from './audit-worker.js';
 
 function assessment(run: Run, final?: FinalReview) {
-  return { assessments: [
+  return { acceptableEditIds: [], respectedRuleIds: [], notApplicableRuleIds: [], assessments: [
     ...(final?.edits || run.edits).map(edit => ({ kind: 'edit', subjectId: edit.id, text: `Change ${edit.id}`, outcome: 'acceptable', reason: 'Serves the instruction.', editIds: [edit.id], proposalEditIds: [], ruleIds: [] })),
     ...run.rules.filter(rule => rule.enabled).map(rule => ({ kind: 'rule', subjectId: rule.id, text: rule.text, outcome: 'respected', reason: 'The target respects this rule.', editIds: [], proposalEditIds: [], ruleIds: [rule.id] })),
     { kind: 'request', subjectId: null, text: run.instruction, outcome: final && final.text === run.original ? 'unfulfilled' : 'fulfilled', reason: final ? 'Judged the actual assembled text.' : 'Judged the proposal.', editIds: [], proposalEditIds: final ? run.edits.map(edit => edit.id) : [], ruleIds: [] },
@@ -49,8 +49,55 @@ test('audit validation covers all edits/rules, rejects invented references and i
   const uncertain = structuredClone(valid); uncertain.assessments[0].outcome = 'uncertain';
   assert.ok(needsAttention(validateAssessment(uncertain, run)[0]));
   const conflict = { kind: 'conflict', subjectId: null, text: 'Competing requirements', outcome: 'conflict', reason: 'Instruction and rule disagree.', editIds: [], proposalEditIds: [], ruleIds: [defaultRules[0].id] };
-  assert.ok(validateAssessment({ assessments: [...valid.assessments, conflict] }, run).some(item => item.kind === 'conflict'));
-  conflict.ruleIds = []; assert.throws(() => validateAssessment({ assessments: [...valid.assessments, conflict] }, run));
+  assert.ok(validateAssessment({ ...valid, assessments: [...valid.assessments, conflict] }, run).some(item => item.kind === 'conflict'));
+  conflict.ruleIds = []; assert.throws(() => validateAssessment({ ...valid, assessments: [...valid.assessments, conflict] }, run));
+});
+
+test('compact verdicts retain full coverage without explanations for every passing change', () => {
+  const run = createRevision(payload.original, 'The result improves accuracy by 6%.', payload.instruction, defaultRules);
+  const full = assessment(run);
+  const compact = {
+    acceptableEditIds: run.edits.map(edit => edit.id),
+    respectedRuleIds: defaultRules.slice(0, 2).map(rule => rule.id),
+    notApplicableRuleIds: defaultRules.slice(2).map(rule => rule.id),
+    assessments: full.assessments.filter(item => item.kind === 'request'),
+  };
+  const normalized = validateAssessment(compact, run);
+  assert.equal(normalized.length, full.assessments.length);
+  assert.equal(normalized.filter(item => item.outcome === 'not_applicable').length, 2);
+  assert.ok(normalized.every(item => !needsAttention(item)));
+  assert.ok(JSON.stringify(compact).length < JSON.stringify(full).length / 2);
+  const mutations = [
+    (data: typeof compact) => { data.acceptableEditIds.pop(); },
+    (data: typeof compact) => { data.acceptableEditIds.push(data.acceptableEditIds[0]); },
+    (data: typeof compact) => { data.acceptableEditIds[0] = 'missing'; },
+    (data: typeof compact) => { data.notApplicableRuleIds.push(data.respectedRuleIds[0]); },
+    (data: typeof compact) => { data.respectedRuleIds.pop(); },
+    (data: typeof compact) => { data.assessments = []; },
+    (data: typeof compact) => { data.assessments.push(full.assessments[0]); },
+  ];
+  for (const mutate of mutations) { const data = structuredClone(compact); mutate(data); assert.throws(() => validateAssessment(data, run)); }
+  assert.throws(() => validateAssessment({ ...compact, extra: [] }, run));
+  assert.throws(() => validateAssessment({ ...compact, respectedRuleIds: null }, run));
+  const concern = { ...full.assessments[0], outcome: 'uncertain', reason: 'The numerical change was not requested.' };
+  const flagged = validateAssessment({ ...compact, acceptableEditIds: compact.acceptableEditIds.slice(1), assessments: [...compact.assessments, concern] }, run);
+  assert.deepEqual(flagged.filter(needsAttention).map(item => item.editIds), [concern.editIds]);
+});
+
+test('proposal audit sends the document and diff once; final checks retain proposal context', () => {
+  const run = createRevision(payload.original, 'The result improves accuracy by 6%.', payload.instruction, defaultRules);
+  const input = auditInput(run);
+  assert.equal(input.proposal, null);
+  assert.equal(input.targetText, run.revised);
+  assert.equal(input.edits.length, run.edits.length);
+});
+
+test('compact zero-edit checks still require an explicit instruction assessment', () => {
+  const run = createRevision('Unchanged.', 'Unchanged.', 'Improve this.', []);
+  const raw = { acceptableEditIds: [], respectedRuleIds: [], notApplicableRuleIds: [], assessments: assessment(run).assessments };
+  raw.assessments[0].outcome = 'unfulfilled';
+  assert.ok(needsAttention(validateAssessment(raw, run)[0]));
+  assert.throws(() => validateAssessment({ ...raw, assessments: [] }, run));
 });
 
 test('generation returns before audit; late audit cannot overwrite decisions or feedback', async t => {
@@ -60,13 +107,13 @@ test('generation returns before audit; late audit cannot overwrite decisions or 
   const run: Run = (await app.inject({ method: 'POST', url: '/api/runs', payload })).json();
   assert.equal(run.proposalAudit?.status, 'pending');
   await tick();
-  const updates = run.edits.map(edit => ({ id: edit.id, decision: 'rejected', feedback: 'Keep my hedge.' }));
-  const changed: Run = (await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { edits: updates } })).json();
+  const updates = run.passages!.map(passage => ({ id: passage.id, decision: 'rejected', feedback: 'Keep my hedge.' }));
+  const changed: Run = (await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { passages: updates } })).json();
   assert.equal(changed.proposalAudit?.status, 'running');
   release(); await app.waitForAudits();
   const saved: Run = (await app.inject(`/api/runs/${run.id}`)).json();
   assert.equal(saved.proposalAudit?.status, 'complete');
-  assert.equal(saved.edits[0].decision, 'rejected'); assert.equal(saved.edits[0].feedback, 'Keep my hedge.');
+  assert.equal(saved.edits[0].decision, 'rejected'); assert.equal(saved.passageReviews![run.passages![0].id].feedback, 'Keep my hedge.');
   assert.equal(newerRun(saved, changed), saved);
 });
 
@@ -75,7 +122,7 @@ test('finalization is idempotent, preserves snapshots and reports over-rejection
   const { app } = setup(async (run, final) => { inputs.push(auditInput(run, final)); return assessment(run, final); }); t.after(() => app.close());
   const run: Run = (await app.inject({ method: 'POST', url: '/api/runs', payload })).json();
   await app.waitForAudits();
-  await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { edits: run.edits.map(edit => ({ id: edit.id, decision: 'rejected', feedback: '' })) } });
+  await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { passages: run.passages!.map(passage => ({ id: passage.id, decision: 'rejected', feedback: '' })) } });
   const finish = () => app.inject({ method: 'POST', url: `/api/runs/${run.id}/finalize` });
   const first: FinalizeResponse = (await finish()).json();
   const duplicate: FinalizeResponse = (await finish()).json();
@@ -87,7 +134,7 @@ test('finalization is idempotent, preserves snapshots and reports over-rejection
   assert.equal(saved.proposalAudit!.assessments.find(item => item.kind === 'request')?.outcome, 'fulfilled');
   assert.deepEqual(inputs[1].decisions.map(item => item.decision), run.edits.map(() => 'rejected'));
   assert.equal(inputs[1].targetText, run.original);
-  await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { edits: run.edits.map(edit => ({ id: edit.id, decision: 'accepted', feedback: '' })) } });
+  await app.inject({ method: 'PATCH', url: `/api/runs/${run.id}`, payload: { passages: run.passages!.map(passage => ({ id: passage.id, decision: 'accepted', feedback: '' })) } });
   const second: FinalizeResponse = (await finish()).json();
   assert.notEqual(second.finalReviewId, first.finalReviewId);
   await app.waitForAudits(); saved = (await app.inject(`/api/runs/${run.id}`)).json();
@@ -159,10 +206,10 @@ test('pending audits recover after restart with a bounded worker', async () => {
 test('final audit payload includes its actual text and decisions, with separate proposal context', () => {
   const run = createRevision('Before. The model may improve recall. After.', 'Before. The model improves recall. After.', 'Remove the hedge.', defaultRules);
   run.selection = { start: 8, end: 37 };
-  const final: FinalReview = { id: 'f1', text: run.original, edits: [], segments: [{ text: run.original }], decisions: run.edits.map(({ id }) => ({ id, decision: 'rejected', feedback: '' })), decisionKey: 'rejected', createdAt: '', audit: { id: 'a1', status: 'pending', attempt: 0, promptVersion: '', createdAt: '', assessments: [], feedback: {} } };
+  const final: FinalReview = { id: 'f1', text: run.original, edits: [], segments: [{ text: run.original }], decisions: run.edits.map(({ id }) => ({ id, decision: 'rejected' })), decisionKey: 'rejected', createdAt: '', audit: { id: 'a1', status: 'pending', attempt: 0, promptVersion: '', createdAt: '', assessments: [], feedback: {} } };
   const input = auditInput(run, final);
   assert.equal(input.targetText, run.original);
-  assert.equal(input.proposal.text, run.revised);
+  assert.equal(input.proposal!.text, run.revised);
   assert.deepEqual(input.edits, []);
   assert.deepEqual(input.selection, run.selection);
   assert.equal(input.decisions[0].decision, 'rejected');
@@ -189,7 +236,7 @@ test('browser API can finalize and retry without a JSON body, and audit failures
   assert.equal(saved.finalReviews![0].id, final.finalReviewId);
   assert.equal(revisions(), 1);
 });
-test('rule proposals receive current rules and distinguish edit feedback from audit disagreements', async t => {
+test('rule proposals receive current rules and distinguish passage feedback from audit disagreements', async t => {
   let evidence: ReturnType<typeof ruleEvidence> | undefined;
   const app = createApp(new DatabaseSync(':memory:'), {
     model: 'test', revise: async original => original.replace('may improve', 'improves'), audit: async run => assessment(run),
@@ -199,14 +246,14 @@ test('rule proposals receive current rules and distinguish edit feedback from au
   const runs: Run[] = [];
   for (const original of [payload.original, 'The method may improve recall.']) runs.push((await app.inject({ method: 'POST', url: '/api/runs', payload: { ...payload, original } })).json());
   await app.waitForAudits();
-  await app.inject({ method: 'PATCH', url: `/api/runs/${runs[0].id}`, payload: { edits: [{ id: runs[0].edits[0].id, decision: 'rejected', feedback: 'Keep the uncertainty here.' }] } });
+  await app.inject({ method: 'PATCH', url: `/api/runs/${runs[0].id}`, payload: { passages: [{ id: runs[0].passages![0].id, decision: 'rejected', feedback: 'Keep the uncertainty here.' }] } });
   const second: Run = (await app.inject(`/api/runs/${runs[1].id}`)).json(), audit = second.proposalAudit!;
   await app.inject({ method: 'PATCH', url: `/api/runs/${second.id}/audits/${audit.id}/feedback`, payload: { assessmentId: audit.assessments[0].id, disagreed: true, text: 'This edit was not permitted to strengthen the claim.' } });
   const rules = [{ id: 'current', text: 'Preserve citations.', enabled: false }];
   const response = await app.inject({ method: 'POST', url: '/api/rules/infer', payload: { rules } });
   assert.equal(response.statusCode, 200);
   assert.deepEqual(evidence!.existingRules, rules);
-  assert.deepEqual(evidence!.evidence.map(item => item.source).sort(), ['audit_disagreement', 'edit']);
+  assert.deepEqual(evidence!.evidence.map(item => item.source).sort(), ['audit_disagreement', 'passage']);
   assert.equal(new Set(evidence!.evidence.map(item => item.runId)).size, 2);
   assert.deepEqual(((await app.inject(`/api/runs/${runs[0].id}`)).json() as Run).rules, []);
 });
