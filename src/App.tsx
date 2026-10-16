@@ -8,7 +8,7 @@ import { Icon } from './components/Icon';
 import { Editor } from './components/Editor';
 import { Sidebar, useNarrowScreen } from './components/Sidebar';
 import { Messages } from './components/Messages';
-import { FloatingRevision } from './components/FloatingRevision';
+import { RevisionBar } from './components/RevisionBar';
 import { Review } from './components/Review';
 import { ConfirmDialog, type Confirmation } from './components/ConfirmDialog';
 
@@ -63,9 +63,9 @@ export function App() {
     <div className="workspace"><main inert={narrow && !!w.sidebar} className="document-workspace" aria-label="Document workspace" aria-busy={!!w.busy}>
       {w.restoreFailed && <div className="restore-actions"><span>Your draft is preserved. Retry the review or continue with the saved draft text.</span><button disabled={!!w.busy} onClick={w.restore}>Retry review</button><button disabled={!!w.busy} onClick={w.continueWithoutReview}>Continue writing</button></div>}
       {visibleRun ? <Review key={`${w.preview ? 'history' : 'active'}-${visibleRun.id}-${w.previewFinalId || w.previewDecisionId || 'proposal'}`} run={visibleRun} audit={w.previewFinal?.audit || visibleRun.proposalAudit} finalResult={!!w.previewFinal} onAudit={() => w.openAudit((w.preview || w.run)!, w.previewFinalId)} onRevisit={() => revisit((w.preview || w.run)!, w.previewFinalId || w.previewDecisionId)} focusEdit={w.focusEdit} readOnly={!!w.preview} busy={!!w.busy} feedback={w.draft.passageFeedback} drafts={w.draft.passageDrafts} onFeedback={w.editFeedback} onText={w.editPassage} onSaveFeedback={w.savePassageFeedback} onDecide={w.decide} onFinish={w.finishReview} onBack={w.closePreview} onUseResult={useResult} onExport={exportRevision} /> : <Editor text={w.draft.text} locked={locked} focus={!w.sidebar && !confirmation} selection={w.selection} instruction={w.draft.instruction} busy={w.busy} onChange={w.editText} onSelection={w.captureSelection} onInstruction={w.editInstruction} onGenerate={w.generate} />}
+      {!visibleRun && !w.draft.activeRunId && <RevisionBar instruction={w.draft.instruction} busy={w.busy} disabled={locked || !w.draft.text.trim() || w.draft.text.length > 30000} onChange={w.editInstruction} onSend={() => w.generate()} onRules={() => w.setSidebar('rules')} />}
       <footer className="document-footer"><span>{words.toLocaleString()} {words === 1 ? 'word' : 'words'}{w.selection && !visibleRun && <span className="selection-count"> · {w.draft.text.slice(w.selection.start, w.selection.end).trim().split(/\s+/).filter(Boolean).length} selected</span>}</span><div className="footer-check">{!visibleRun && w.lastRun && <FidelityStatus audit={w.lastAudit} onClick={openLastAudit} prefix={w.earlierSnapshot ? 'Earlier revision' : w.lastFinal ? 'Final check' : 'Fidelity'} />}{!visibleRun && (w.lastLoadError || w.auditPollError) && <button className="text-button" onClick={w.lastLoadError ? w.retryLastCheck : w.retryPolling}>Check status unavailable · Retry</button>}<span className="save-status" role="status">{w.busy ? <><span className="spinner" />{w.busy}</> : w.preview ? 'Viewing saved revision' : w.storageError ? 'Not saved locally' : <><span className="saved-dot" />Saved locally</>}</span></div></footer>
     </main>{w.sidebar && <Sidebar workspace={w} mobile={narrow} onRevisit={() => w.inspectedRun && revisit(w.inspectedRun, w.auditFinalId)} />}</div>
-    {!visibleRun && !w.draft.activeRunId && !w.sidebar && !confirmation && <FloatingRevision instruction={w.draft.instruction} busy={w.busy} disabled={locked || !w.draft.text.trim() || w.draft.text.length > 30000} onChange={w.editInstruction} onSend={() => w.generate()} onRules={() => w.setSidebar('rules')} />}
     <div className="copy-notification" role="status" aria-live="polite" aria-atomic="true">
       {copyNotification > 0 && <span key={copyNotification} className="copy-notification-pill"><Icon name="check" />Text copied</span>}
     </div>

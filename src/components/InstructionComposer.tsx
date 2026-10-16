@@ -7,14 +7,15 @@ interface Props {
   disabled: boolean;
   placeholder: string;
   autoFocus?: boolean;
+  rows?: number;
   onChange: (instruction: string) => void;
   onSend: () => void;
 }
-export function InstructionComposer({ instruction, busy, disabled, placeholder, autoFocus = false, onChange, onSend }: Props) {
+export function InstructionComposer({ instruction, busy, disabled, placeholder, autoFocus = false, rows = 4, onChange, onSend }: Props) {
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { if (autoFocus && !busy) input.current?.focus({ preventScroll: true }); }, [autoFocus, busy]);
   return <form className="instruction-composer" onSubmit={event => { event.preventDefault(); if (!disabled && !busy && instruction.trim()) onSend(); }}>
-    <textarea ref={input} rows={4} aria-label="Revision instruction" data-initial-focus className="instruction-input" placeholder={placeholder} value={instruction} maxLength={5000} disabled={!!busy} onChange={event => onChange(event.target.value)}
+    <textarea ref={input} rows={rows} aria-label="Revision instruction" data-initial-focus className="instruction-input" placeholder={placeholder} value={instruction} maxLength={5000} disabled={!!busy} onChange={event => onChange(event.target.value)}
       onKeyDown={event => {
         if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
         event.preventDefault();

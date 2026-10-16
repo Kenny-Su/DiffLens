@@ -25,7 +25,7 @@ Open http://127.0.0.1:3001. The build type-checks the project and replaces `dist
 ## Workflow
 
 - Write in the native textarea. There is no formatting toolbar, Markdown/LaTeX renderer, or rich-text document model. Writing and review share typography and page width.
-- Click **Revise** for a document instruction, or select text and choose **Revise selection** (**Alt+Enter**). **Enter** submits; **Shift+Enter** adds a line. Standing rules are available from the revision input.
+- Use the text bar at the bottom for a document instruction, or select text and choose **Revise selection** (**Alt+Enter**). **Enter** submits; **Shift+Enter** adds a line. Standing rules are available from the revision input.
 - Review plays changes sentence by sentence and pauses at linked fidelity concerns. Select a passage to **Accept**, **Reject**, or **Use edited text**. Decisions cover the whole passage, including grouped sentence splits and merges.
 - **Return to writing** assembles accepted changes and manual replacements; pending or rejected passages retain the original. It runs a fresh fidelity check on that result.
 - **History** previews saved revisions. **Use result** replaces the working draft; **Revisit review** restores its decisions. Copy/download uses committed decisions. JSON export includes the proposal, decisions, feedback, and audit snapshots.
